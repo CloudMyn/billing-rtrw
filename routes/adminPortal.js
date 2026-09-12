@@ -1555,6 +1555,113 @@ router.get('/bulk', requireAdminSession, (req, res) => {
   res.render('admin/dashboard', { title: 'Konfigurasi Massal', company: company(), version: '2.0.0', activePage: 'bulk', billing: null, custStats: null, settings });
 });
 
+// ─── ONU MODEM STICKER PRINT ───────────────────────────────────────────────
+router.get('/onu-stickers', requireAdminSession, requireSidebarMenuAccess('onu_stickers'), async (req, res) => {
+  try {
+    const settings = getSettings();
+    const mode = req.query.mode === 'customers' ? 'customers' : 'blank';
+    const count = Math.max(1, Math.min(100, Number(req.query.count || 10)));
+    const searchQuery = String(req.query.q || '').trim();
+    const selectedRouterId = req.selectedRouterId || (req.query.router_id ? Number(req.query.router_id) : null);
+    const csPhone = req.query.cs_phone || settings.company_phone || settings.company_whatsapp || '08xxxxxxxxxx';
+    const serverBaseUrl = `${req.protocol}://${req.get('host')}`;
+
+    const routers = mikrotikService.getAllRouters();
+    let stickers = [];
+
+    if (mode === 'blank') {
+      const qrPayload = `${serverBaseUrl}/app/connect`;
+      const qrCodeDataUrl = await QRCode.toDataURL(qrPayload, {
+        margin: 1,
+        width: 250,
+        errorCorrectionLevel: 'M'
+      });
+
+      for (let i = 0; i < count; i++) {
+        stickers.push({
+          name: '',
+          id_display: '',
+          package_name: '',
+          qrCodeDataUrl
+        });
+      }
+    } else {
+      const customers = customerSvc.getAllCustomers(searchQuery, selectedRouterId, 'active');
+      const targetCusts = (customers || []).slice(0, 100);
+
+      for (const c of targetCusts) {
+        const qrPayload = `${serverBaseUrl}/app/connect?cid=${encodeURIComponent(c.pppoe_username || c.id)}`;
+        const qrCodeDataUrl = await QRCode.toDataURL(qrPayload, {
+          margin: 1,
+          width: 250,
+          errorCorrectionLevel: 'M'
+        });
+
+        stickers.push({
+          name: c.name,
+          id_display: `${c.pppoe_username || ('ID:' + c.id)}`,
+          package_name: c.package_name || 'Reguler',
+          qrCodeDataUrl
+        });
+      }
+    }
+
+    res.render('admin/onu_stickers', {
+      company: company(),
+      companyLogo: settings.company_logo || '',
+      csPhone,
+      mode,
+      count,
+      searchQuery,
+      selectedRouterId,
+      routers,
+      stickers
+    });
+  } catch (e) {
+    logger.error(`[ONU Stickers] Error: ${e.message}`);
+    res.status(500).send(`Gagal memuat stiker: ${e.message}`);
+  }
+});
+
+router.get('/customers/:id/sticker-onu', requireAdminSession, async (req, res) => {
+  try {
+    const settings = getSettings();
+    const customer = customerSvc.getCustomerById(req.params.id);
+    if (!customer) return res.status(404).send('Pelanggan tidak ditemukan');
+
+    const csPhone = settings.company_phone || settings.company_whatsapp || '08xxxxxxxxxx';
+    const serverBaseUrl = `${req.protocol}://${req.get('host')}`;
+
+    const qrPayload = `${serverBaseUrl}/app/connect?cid=${encodeURIComponent(customer.pppoe_username || customer.id)}`;
+    const qrCodeDataUrl = await QRCode.toDataURL(qrPayload, {
+      margin: 1,
+      width: 250,
+      errorCorrectionLevel: 'M'
+    });
+
+    const stickers = [{
+      name: customer.name,
+      id_display: `${customer.pppoe_username || ('ID:' + customer.id)}`,
+      package_name: customer.package_name || 'Reguler',
+      qrCodeDataUrl
+    }];
+
+    res.render('admin/onu_stickers', {
+      company: company(),
+      companyLogo: settings.company_logo || '',
+      csPhone,
+      mode: 'customers',
+      count: 1,
+      searchQuery: '',
+      selectedRouterId: null,
+      routers: [],
+      stickers
+    });
+  } catch (e) {
+    res.status(500).send(`Gagal memuat stiker: ${e.message}`);
+  }
+});
+
 // ─── CUSTOMERS ─────────────────────────────────────────────────────────────
 router.get('/customers', requireAdminSession, requireSidebarMenuAccess('customers'), async (req, res) => {
   const { search = '', status: filterStatus = '', area: filterArea = '' } = req.query;

@@ -20,6 +20,11 @@ import com.alijaya.customer.databinding.ActivityServerConfigBinding
 import com.alijaya.customer.ui.login.LoginActivity
 import com.alijaya.customer.ui.main.MainActivity
 import com.alijaya.customer.util.BluetoothPrinterHelper
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanIntentResult
+import com.journeyapps.barcodescanner.ScanOptions
+import android.net.Uri
+import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -35,6 +40,12 @@ import javax.net.ssl.X509TrustManager
 class ServerConfigActivity : AppCompatActivity() {
     private lateinit var binding: ActivityServerConfigBinding
     private var pairedPrinters: List<BluetoothPrinterHelper.PairedPrinter> = emptyList()
+
+    private val qrScanLauncher = registerForActivityResult(ScanContract()) { result: ScanIntentResult ->
+        if (result.contents != null) {
+            handleQrCodeResult(result.contents)
+        }
+    }
 
     private val requestBtPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -83,6 +94,11 @@ class ServerConfigActivity : AppCompatActivity() {
         // Radio button changes
         binding.rgPortalType.setOnCheckedChangeListener { _, _ ->
             updatePreviewUrl()
+        }
+
+        // QR Code Scanner Button
+        binding.btnScanQr.setOnClickListener {
+            launchQrScanner()
         }
 
         // Quick Preset Buttons
@@ -348,5 +364,132 @@ class ServerConfigActivity : AppCompatActivity() {
         }
 
         binding.tvPreviewUrl.text = "Target: $base$path"
+    }
+
+    private fun launchQrScanner() {
+        val options = ScanOptions().apply {
+            setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+            setPrompt("Arahkan kamera ke QR Code pada stiker modem ONU")
+            setCameraId(0)
+            setBeepEnabled(true)
+            setBarcodeImageEnabled(false)
+            setOrientationLocked(false)
+        }
+        qrScanLauncher.launch(options)
+    }
+
+    private fun handleQrCodeResult(raw: String) {
+        val str = raw.trim()
+        if (str.isEmpty()) return
+
+        var targetUrl = ""
+        var customerId: String? = null
+
+        try {
+            if (str.startsWith("{") && str.endsWith("}")) {
+                val json = JSONObject(str)
+                targetUrl = json.optString("url", json.optString("server", ""))
+                customerId = json.optString("cid", json.optString("customerId", null))
+            } else if (str.startsWith("http://", ignoreCase = true) || str.startsWith("https://", ignoreCase = true)) {
+                val uri = Uri.parse(str)
+                val scheme = uri.scheme ?: "http"
+                val host = uri.host ?: ""
+                val port = uri.port
+                targetUrl = if (port != -1 && port != 80 && port != 443) {
+                    "$scheme://$host:$port"
+                } else {
+                    "$scheme://$host"
+                }
+                customerId = uri.getQueryParameter("cid")
+            } else {
+                targetUrl = if (str.contains("://")) str else "http://$str"
+            }
+        } catch (e: Exception) {
+            targetUrl = str
+        }
+
+        if (targetUrl.isNotBlank()) {
+            val cleanUrl = targetUrl.trimEnd('/')
+            binding.etServerUrl.setText(cleanUrl)
+            updatePreviewUrl()
+            Toast.makeText(this, "QR Code terdeteksi. Menghubungkan ke $cleanUrl...", Toast.LENGTH_SHORT).show()
+            testConnectionAndProceed(cleanUrl, customerId)
+        } else {
+            Toast.makeText(this, "QR Code tidak valid: $str", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun testConnectionAndProceed(baseUrl: String, customerId: String?) {
+        binding.tvConnectionStatus.text = "Status: Menguji koneksi ke $baseUrl..."
+        binding.tvConnectionStatus.setTextColor(Color.parseColor("#38BDF8"))
+
+        val cleanBase = if (baseUrl.startsWith("http://") || baseUrl.startsWith("https://")) baseUrl else "https://$baseUrl"
+        val pingUrl = "$cleanBase/api/customer/ping"
+
+        lifecycleScope.launch {
+            var detectedIsp = ""
+            val isSuccess = withContext(Dispatchers.IO) {
+                try {
+                    val client = getUnsafeOkHttpClient()
+                    val request = Request.Builder().url(pingUrl).build()
+                    val response = client.newCall(request).execute()
+                    if (response.isSuccessful) {
+                        val str = response.body?.string()
+                        if (!str.isNullOrBlank()) {
+                            try {
+                                val json = JSONObject(str)
+                                detectedIsp = json.optString("companyHeader", json.optString("ispName", json.optString("appName", "")))
+                                if (detectedIsp.isNotBlank()) {
+                                    CustomerApplication.sessionManager.saveIspName(detectedIsp)
+                                }
+                            } catch (_: Exception) {}
+                        }
+                        true
+                    } else {
+                        val rootReq = Request.Builder().url(cleanBase).build()
+                        val rootResp = client.newCall(rootReq).execute()
+                        rootResp.isSuccessful || rootResp.code < 500
+                    }
+                } catch (_: Exception) {
+                    try {
+                        val client = getUnsafeOkHttpClient()
+                        val rootReq = Request.Builder().url(cleanBase).build()
+                        val rootResp = client.newCall(rootReq).execute()
+                        rootResp.isSuccessful || rootResp.code < 500
+                    } catch (_: Exception) {
+                        false
+                    }
+                }
+            }
+
+            if (isSuccess) {
+                val displayName = if (detectedIsp.isNotBlank()) detectedIsp else "Server"
+                binding.tvConnectionStatus.text = "Status: Terhubung ke $displayName"
+                binding.tvConnectionStatus.setTextColor(Color.parseColor("#10B981"))
+
+                // Simpan konfigurasi
+                val session = CustomerApplication.sessionManager
+                session.saveServerBaseUrl(cleanBase)
+                if (detectedIsp.isNotBlank()) {
+                    session.saveIspName(detectedIsp)
+                }
+                session.setFirstTimeSetup(false)
+
+                Toast.makeText(this@ServerConfigActivity, "Berhasil terhubung ke $displayName!", Toast.LENGTH_SHORT).show()
+
+                // Buka LoginActivity
+                val intent = Intent(this@ServerConfigActivity, LoginActivity::class.java).apply {
+                    if (!customerId.isNullOrBlank()) {
+                        putExtra("PREFILL_ID", customerId)
+                    }
+                }
+                startActivity(intent)
+                finish()
+            } else {
+                binding.tvConnectionStatus.text = "Status: Gagal menghubungi server"
+                binding.tvConnectionStatus.setTextColor(Color.parseColor("#EF4444"))
+                Toast.makeText(this@ServerConfigActivity, "Server tidak dapat dijangkau. Periksa koneksi internet Anda.", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 }

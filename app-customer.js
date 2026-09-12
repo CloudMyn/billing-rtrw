@@ -1578,6 +1578,22 @@ app.post(['/donasi/confirm', '/api/donasi/confirm'], async (req, res) => {
 const acsServerService = require('./services/acsServerService');
 app.post('/acs', express.raw({ type: ['text/xml', 'application/soap+xml', 'application/xml', 'text/plain'], limit: '2mb' }), acsServerService.handleCwmpRequest);
 
+// Landing page untuk scan QR stiker modem ONU pelanggan
+app.get('/app/connect', (req, res) => {
+  const settings = getSettingsWithCache();
+  const cid = String(req.query.cid || '').trim();
+  const serverUrl = `${req.protocol}://${req.get('host')}`;
+  const companyName = settings.company_header || 'ALIJAYA DIGITAL NETWORK';
+  const companyPhone = settings.company_phone || '';
+  res.render('app_connect', {
+    companyName,
+    companyPhone,
+    serverUrl,
+    cid,
+    settings
+  });
+});
+
 // Mount customer portal
 const customerPortal = require('./routes/customerPortal');
 app.use('/customer', customerPortal);

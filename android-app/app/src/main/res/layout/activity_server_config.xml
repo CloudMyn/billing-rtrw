@@ -28,12 +28,59 @@
             android:textColor="@color/text_muted"
             android:textSize="12sp" />
 
+        <!-- 0. QR SCANNER SECTION (CARA PALING MUDAH) -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/card_scan_qr"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            app:cardCornerRadius="14dp"
+            app:cardElevation="2dp"
+            app:cardBackgroundColor="@color/card_dark"
+            app:strokeColor="@color/primary"
+            app:strokeWidth="1.5dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="CARA PALING CEPAT &amp; MUDAH"
+                    android:textColor="@color/accent"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Pindai QR Code pada stiker modem ONU pelanggan untuk otomatis terhubung tanpa mengetik URL."
+                    android:textColor="@color/text_muted"
+                    android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/btn_scan_qr"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="12dp"
+                    android:backgroundTint="@color/primary"
+                    android:text="📷 Pindai QR Stiker Modem ONU"
+                    android:textColor="@color/text_white"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
         <!-- 1. SERVER URL SECTION -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
-            android:text="ALAMAT SERVER BILLING"
+            android:text="ATAU MASUKKAN URL MANUAL"
             android:textColor="@color/accent"
             android:textSize="11sp"
             android:textStyle="bold" />

@@ -1,6 +1,7 @@
 package com.alijaya.customer.ui.login
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
@@ -12,10 +13,25 @@ import com.alijaya.customer.data.pref.SessionManager
 import com.alijaya.customer.databinding.ActivityLoginBinding
 import com.alijaya.customer.ui.main.MainActivity
 import com.alijaya.customer.ui.server.ServerConfigActivity
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanIntentResult
+import com.journeyapps.barcodescanner.ScanOptions
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 class LoginActivity : AppCompatActivity() {
     private lateinit var binding: ActivityLoginBinding
+
+    private val qrScanLauncher = registerForActivityResult(ScanContract()) { result: ScanIntentResult ->
+        if (result.contents != null) {
+            handleQrCodeResult(result.contents)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -23,6 +39,24 @@ class LoginActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         binding.tvServerUrl.text = "Server: " + CustomerApplication.sessionManager.getServerBaseUrl()
+
+        val prefillId = intent.getStringExtra("PREFILL_ID")
+        if (!prefillId.isNullOrBlank()) {
+            binding.etLoginId.setText(prefillId)
+            binding.etPassword.requestFocus()
+        }
+
+        binding.btnScanQrLogin.setOnClickListener {
+            val options = ScanOptions().apply {
+                setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                setPrompt("Arahkan kamera ke QR Code pada stiker modem ONU")
+                setCameraId(0)
+                setBeepEnabled(true)
+                setBarcodeImageEnabled(false)
+                setOrientationLocked(false)
+            }
+            qrScanLauncher.launch(options)
+        }
 
         binding.btnServerSetting.setOnClickListener {
             startActivity(Intent(this, ServerConfigActivity::class.java))
@@ -95,6 +129,73 @@ class LoginActivity : AppCompatActivity() {
                 binding.progressBar.visibility = View.GONE
                 binding.btnLogin.isEnabled = true
             }
+        }
+    }
+
+    private fun handleQrCodeResult(raw: String) {
+        val str = raw.trim()
+        if (str.isEmpty()) return
+
+        var targetUrl = ""
+        var customerId: String? = null
+
+        try {
+            if (str.startsWith("{") && str.endsWith("}")) {
+                val json = JSONObject(str)
+                targetUrl = json.optString("url", json.optString("server", ""))
+                customerId = json.optString("cid", json.optString("customerId", null))
+            } else if (str.startsWith("http://", ignoreCase = true) || str.startsWith("https://", ignoreCase = true)) {
+                val uri = Uri.parse(str)
+                val scheme = uri.scheme ?: "http"
+                val host = uri.host ?: ""
+                val port = uri.port
+                targetUrl = if (port != -1 && port != 80 && port != 443) {
+                    "$scheme://$host:$port"
+                } else {
+                    "$scheme://$host"
+                }
+                customerId = uri.getQueryParameter("cid")
+            } else {
+                targetUrl = if (str.contains("://")) str else "http://$str"
+            }
+        } catch (e: Exception) {
+            targetUrl = str
+        }
+
+        if (targetUrl.isNotBlank()) {
+            val cleanUrl = targetUrl.trimEnd('/')
+            CustomerApplication.sessionManager.saveServerBaseUrl(cleanUrl)
+            binding.tvServerUrl.text = "Server: $cleanUrl"
+
+            if (!customerId.isNullOrBlank()) {
+                binding.etLoginId.setText(customerId)
+                binding.etPassword.requestFocus()
+            }
+
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val client = OkHttpClient.Builder().connectTimeout(4, TimeUnit.SECONDS).build()
+                    val req = Request.Builder().url("$cleanUrl/api/customer/ping").build()
+                    val resp = client.newCall(req).execute()
+                    if (resp.isSuccessful) {
+                        val body = resp.body?.string()
+                        if (!body.isNullOrBlank()) {
+                            val json = JSONObject(body)
+                            val name = json.optString("companyHeader", json.optString("ispName", ""))
+                            if (name.isNotBlank()) {
+                                CustomerApplication.sessionManager.saveIspName(name)
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(this@LoginActivity, "Terhubung ke $name!", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            Toast.makeText(this, "Server berhasil diperbarui!", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "QR Code tidak valid", Toast.LENGTH_LONG).show()
         }
     }
 }

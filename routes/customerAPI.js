@@ -162,6 +162,7 @@ router.get('/ping', (req, res) => {
     companyTagline: settings.company_tagline || settings.footer_info || 'Billing & Hotspot System',
     companyPhone: settings.company_phone || '',
     companyAddress: settings.company_address || '',
+    logoUrl: settings.company_logo || '/img/logo-billing-rtrw.png',
     appName: ispName,
     version: '1.2.0',
     timestamp: Date.now()
@@ -181,6 +182,7 @@ router.get('/info', (req, res) => {
       companyPhone: settings.company_phone || '',
       companyAddress: settings.company_address || '',
       companyEmail: settings.company_email || '',
+      logoUrl: settings.company_logo || '/img/logo-billing-rtrw.png',
       operationalHours: settings.operational_hours || ''
     }
   });

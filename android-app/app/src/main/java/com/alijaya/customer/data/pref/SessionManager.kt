@@ -44,10 +44,16 @@ class SessionManager(context: Context) {
         prefs.edit().putBoolean(KEY_FIRST_TIME_DONE, true).apply()
     }
 
+    fun setFirstTimeSetup(isFirst: Boolean) {
+        prefs.edit().putBoolean(KEY_FIRST_TIME_DONE, !isFirst).apply()
+    }
+
     fun getServerBaseUrl(): String {
         val raw = prefs.getString(KEY_SERVER_URL, DEFAULT_SERVER_URL) ?: DEFAULT_SERVER_URL
         return sanitizeBaseUrl(raw)
     }
+
+    fun saveServerBaseUrl(url: String) = saveServerUrl(url)
 
     fun getPortalType(): String {
         return prefs.getString(KEY_PORTAL_TYPE, PORTAL_CUSTOMER) ?: PORTAL_CUSTOMER
