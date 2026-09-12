@@ -258,7 +258,7 @@ class AgentHomeFragment : Fragment() {
 
         val tvWaHint = TextView(ctx).apply {
             text = "Kirim struk ke WhatsApp pembeli (opsional):"
-            setTextColor(android.graphics.Color.parseColor("#475569"))
+            setTextColor(android.graphics.Color.parseColor("#94A3B8"))
             textSize = 12f
             setPadding(0, 6, 0, 6)
         }
@@ -266,7 +266,7 @@ class AgentHomeFragment : Fragment() {
 
         val etBuyerPhone = EditText(ctx).apply {
             hint = "No. WhatsApp (misal: 0812...)"
-            setHintTextColor(android.graphics.Color.parseColor("#94A3B8"))
+            setHintTextColor(android.graphics.Color.parseColor("#64748B"))
             inputType = android.text.InputType.TYPE_CLASS_PHONE
             setTextColor(android.graphics.Color.WHITE)
             textSize = 14f
@@ -275,7 +275,7 @@ class AgentHomeFragment : Fragment() {
         }
         layout.addView(etBuyerPhone)
 
-        AlertDialog.Builder(ctx)
+        val sellDialog = AlertDialog.Builder(ctx)
             .setTitle("🎫 Konfirmasi Jual Voucher")
             .setView(layout)
             .setPositiveButton("Buat & Cetak") { _, _ ->
@@ -283,7 +283,19 @@ class AgentHomeFragment : Fragment() {
                 executeGenerateVoucher(priceId, profile, sellPrice, validity, buyerPhone)
             }
             .setNegativeButton("Batal", null)
-            .show()
+            .create()
+
+        sellDialog.setOnShowListener {
+            sellDialog.window?.setBackgroundDrawable(android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                cornerRadius = 28f
+                setColor(android.graphics.Color.parseColor("#1E293B"))
+                setStroke(2, android.graphics.Color.parseColor("#334155"))
+            })
+            sellDialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(android.graphics.Color.parseColor("#38BDF8"))
+            sellDialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(android.graphics.Color.parseColor("#94A3B8"))
+        }
+        sellDialog.show()
     }
 
     private fun executeGenerateVoucher(priceId: Int, profile: String, sellPrice: Long, validity: String, buyerPhone: String) {

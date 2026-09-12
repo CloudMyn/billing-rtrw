@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -448,7 +449,12 @@ class AdminVouchersFragment : Fragment() {
         val loadingDialog = AlertDialog.Builder(ctx)
             .setMessage("Mengambil profile MikroTik...")
             .setCancelable(false)
-            .show()
+            .create()
+        loadingDialog.setOnShowListener {
+            loadingDialog.window?.setBackgroundDrawable(createDialogBackground())
+            loadingDialog.findViewById<TextView>(android.R.id.message)?.setTextColor(Color.WHITE)
+        }
+        loadingDialog.show()
 
         lifecycleScope.launch {
             val url = "${getBaseUrl()}/api/customer/app/admin/vouchers/options"
@@ -503,7 +509,7 @@ class AdminVouchersFragment : Fragment() {
         val ctx = context ?: return
 
         val scroll = ScrollView(ctx).apply {
-            setPadding(32, 24, 32, 16)
+            setPadding(32, 20, 32, 16)
         }
         val layout = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -511,40 +517,28 @@ class AdminVouchersFragment : Fragment() {
         scroll.addView(layout)
 
         // Mode Switch (Single vs Batch)
-        val tvModeLabel = TextView(ctx).apply {
-            text = "Tipe Pembuatan Voucher:"
-            setTextColor(colorTextMuted)
-            textSize = 12f
-            setPadding(0, 0, 0, 6)
-        }
-        layout.addView(tvModeLabel)
+        layout.addView(createFieldLabel(ctx, "Tipe Pembuatan Voucher:"))
 
         val radioGroupMode = RadioGroup(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, 16)
+            setPadding(0, 0, 0, 14)
         }
         val rbSingle = RadioButton(ctx).apply {
             text = "🎯 Satuan (1 Voucher)"
-            setTextColor(colorTextWhite)
             isChecked = true
+            styleRadioButton(this)
         }
         val rbBatch = RadioButton(ctx).apply {
             text = "📦 Banyak (Batch)"
-            setTextColor(colorTextWhite)
             isChecked = false
+            styleRadioButton(this)
         }
         radioGroupMode.addView(rbSingle)
         radioGroupMode.addView(rbBatch)
         layout.addView(radioGroupMode)
 
         // Profile MikroTik Selector
-        val tvProfileLabel = TextView(ctx).apply {
-            text = "Pilih Hotspot Profile (MikroTik):"
-            setTextColor(colorTextMuted)
-            textSize = 12f
-            setPadding(0, 6, 0, 4)
-        }
-        layout.addView(tvProfileLabel)
+        layout.addView(createFieldLabel(ctx, "Pilih Hotspot Profile (MikroTik):"))
 
         val profileNames = mutableListOf<String>()
         for (i in 0 until cachedProfiles.length()) {
@@ -560,62 +554,47 @@ class AdminVouchersFragment : Fragment() {
         val spProfile = Spinner(ctx).apply {
             background = createInputBackground()
             setPadding(16, 16, 16, 16)
-            adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, profileNames)
+            adapter = createDarkSpinnerAdapter(ctx, profileNames)
         }
         layout.addView(spProfile)
 
         // Price & Validity inputs
-        val tvPriceLabel = TextView(ctx).apply {
-            text = "Harga Jual (Rp):"
-            setTextColor(colorTextMuted)
-            textSize = 12f
-            setPadding(0, 12, 0, 4)
-        }
-        layout.addView(tvPriceLabel)
+        layout.addView(createFieldLabel(ctx, "Harga Jual (Rp):"))
 
         val etPrice = EditText(ctx).apply {
             background = createInputBackground()
             setTextColor(colorTextWhite)
             inputType = InputType.TYPE_CLASS_NUMBER
-            setPadding(20, 18, 20, 18)
+            setPadding(24, 20, 24, 20)
             hint = "Contoh: 5000"
-            setHintTextColor(colorTextMuted)
+            setHintTextColor(Color.parseColor("#64748B"))
+            textSize = 13.5f
         }
         layout.addView(etPrice)
 
-        val tvValidityLabel = TextView(ctx).apply {
-            text = "Masa Aktif / Limit Waktu (Contoh: 2h, 1d, 30d):"
-            setTextColor(colorTextMuted)
-            textSize = 12f
-            setPadding(0, 12, 0, 4)
-        }
-        layout.addView(tvValidityLabel)
+        layout.addView(createFieldLabel(ctx, "Masa Aktif / Limit Waktu (Contoh: 2h, 1d, 30d):"))
 
         val etValidity = EditText(ctx).apply {
             background = createInputBackground()
             setTextColor(colorTextWhite)
-            setPadding(20, 18, 20, 18)
+            setPadding(24, 20, 24, 20)
             hint = "Contoh: 1d atau 2h"
-            setHintTextColor(colorTextMuted)
+            setHintTextColor(Color.parseColor("#64748B"))
+            textSize = 13.5f
         }
         layout.addView(etValidity)
 
         // Comment MikroTik
-        val tvCommentLabel = TextView(ctx).apply {
-            text = "Komentar MikroTik (Comment):"
-            setTextColor(colorTextMuted)
-            textSize = 12f
-            setPadding(0, 12, 0, 4)
-        }
-        layout.addView(tvCommentLabel)
+        layout.addView(createFieldLabel(ctx, "Komentar MikroTik (Comment):"))
 
         val etComment = EditText(ctx).apply {
             background = createInputBackground()
             setTextColor(colorTextWhite)
-            setPadding(20, 18, 20, 18)
+            setPadding(24, 20, 24, 20)
             setText(cachedDefaultComment)
             hint = "Contoh: vc-admin-12.09.26"
-            setHintTextColor(colorTextMuted)
+            setHintTextColor(Color.parseColor("#64748B"))
+            textSize = 13.5f
         }
         layout.addView(etComment)
 
@@ -638,13 +617,7 @@ class AdminVouchersFragment : Fragment() {
             orientation = LinearLayout.VERTICAL
         }
 
-        val tvSingleGenMode = TextView(ctx).apply {
-            text = "Metode Kode Voucher:"
-            setTextColor(colorTextMuted)
-            textSize = 12f
-            setPadding(0, 12, 0, 4)
-        }
-        singleContainer.addView(tvSingleGenMode)
+        singleContainer.addView(createFieldLabel(ctx, "Metode Kode Voucher:"))
 
         val rgSingleMethod = RadioGroup(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -652,13 +625,13 @@ class AdminVouchersFragment : Fragment() {
         }
         val rbSingleAuto = RadioButton(ctx).apply {
             text = "Otomatis"
-            setTextColor(colorTextWhite)
             isChecked = true
+            styleRadioButton(this)
         }
         val rbSingleManual = RadioButton(ctx).apply {
             text = "Manual (User & Pass)"
-            setTextColor(colorTextWhite)
             isChecked = false
+            styleRadioButton(this)
         }
         rgSingleMethod.addView(rbSingleAuto)
         rgSingleMethod.addView(rbSingleManual)
@@ -670,31 +643,23 @@ class AdminVouchersFragment : Fragment() {
             visibility = View.GONE
         }
 
-        val tvUserLabel = TextView(ctx).apply {
-            text = "Username / Kode Voucher:"
-            setTextColor(colorTextMuted)
-            textSize = 12f
-            setPadding(0, 4, 0, 4)
-        }
+        val tvUserLabel = createFieldLabel(ctx, "Username / Kode Voucher:")
         val etUser = EditText(ctx).apply {
             background = createInputBackground()
             setTextColor(colorTextWhite)
-            setPadding(20, 18, 20, 18)
+            setPadding(24, 20, 24, 20)
             hint = "Masukkan username voucher"
-            setHintTextColor(colorTextMuted)
+            setHintTextColor(Color.parseColor("#64748B"))
+            textSize = 13.5f
         }
-        val tvPassLabel = TextView(ctx).apply {
-            text = "Password (Opsional, kosongkan jika = username):"
-            setTextColor(colorTextMuted)
-            textSize = 12f
-            setPadding(0, 8, 0, 4)
-        }
+        val tvPassLabel = createFieldLabel(ctx, "Password (Opsional, kosongkan jika = username):")
         val etPass = EditText(ctx).apply {
             background = createInputBackground()
             setTextColor(colorTextWhite)
-            setPadding(20, 18, 20, 18)
+            setPadding(24, 20, 24, 20)
             hint = "Sama dengan username jika kosong"
-            setHintTextColor(colorTextMuted)
+            setHintTextColor(Color.parseColor("#64748B"))
+            textSize = 13.5f
         }
         manualContainer.addView(tvUserLabel)
         manualContainer.addView(etUser)
@@ -703,19 +668,15 @@ class AdminVouchersFragment : Fragment() {
         singleContainer.addView(manualContainer)
 
         // Buyer Phone (for WhatsApp)
-        val tvBuyerPhone = TextView(ctx).apply {
-            text = "No. WhatsApp Pembeli (Opsional untuk kirim WA):"
-            setTextColor(colorTextMuted)
-            textSize = 12f
-            setPadding(0, 12, 0, 4)
-        }
+        val tvBuyerPhone = createFieldLabel(ctx, "No. WhatsApp Pembeli (Opsional untuk kirim WA):")
         val etBuyerPhone = EditText(ctx).apply {
             background = createInputBackground()
             setTextColor(colorTextWhite)
             inputType = InputType.TYPE_CLASS_PHONE
-            setPadding(20, 18, 20, 18)
+            setPadding(24, 20, 24, 20)
             hint = "Contoh: 081234567890"
-            setHintTextColor(colorTextMuted)
+            setHintTextColor(Color.parseColor("#64748B"))
+            textSize = 13.5f
         }
         singleContainer.addView(tvBuyerPhone)
         singleContainer.addView(etBuyerPhone)
@@ -736,78 +697,55 @@ class AdminVouchersFragment : Fragment() {
             visibility = View.GONE
         }
 
-        val tvQtyLabel = TextView(ctx).apply {
-            text = "Jumlah Voucher (Qty):"
-            setTextColor(colorTextMuted)
-            textSize = 12f
-            setPadding(0, 12, 0, 4)
-        }
+        val tvQtyLabel = createFieldLabel(ctx, "Jumlah Voucher (Qty):")
         val etQty = EditText(ctx).apply {
             background = createInputBackground()
             setTextColor(colorTextWhite)
             inputType = InputType.TYPE_CLASS_NUMBER
-            setPadding(20, 18, 20, 18)
+            setPadding(24, 20, 24, 20)
             setText("50")
+            textSize = 13.5f
         }
         batchContainer.addView(tvQtyLabel)
         batchContainer.addView(etQty)
 
-        val tvPrefixLabel = TextView(ctx).apply {
-            text = "Prefix Kode (Opsional):"
-            setTextColor(colorTextMuted)
-            textSize = 12f
-            setPadding(0, 12, 0, 4)
-        }
+        val tvPrefixLabel = createFieldLabel(ctx, "Prefix Kode (Opsional):")
         val etPrefix = EditText(ctx).apply {
             background = createInputBackground()
             setTextColor(colorTextWhite)
-            setPadding(20, 18, 20, 18)
+            setPadding(24, 20, 24, 20)
             hint = "Contoh: VC"
-            setHintTextColor(colorTextMuted)
+            setHintTextColor(Color.parseColor("#64748B"))
+            textSize = 13.5f
         }
         batchContainer.addView(tvPrefixLabel)
         batchContainer.addView(etPrefix)
 
-        val tvCodeLenLabel = TextView(ctx).apply {
-            text = "Panjang Karakter Kode:"
-            setTextColor(colorTextMuted)
-            textSize = 12f
-            setPadding(0, 12, 0, 4)
-        }
+        val tvCodeLenLabel = createFieldLabel(ctx, "Panjang Karakter Kode:")
         val spCodeLen = Spinner(ctx).apply {
             background = createInputBackground()
             setPadding(16, 16, 16, 16)
-            adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, listOf("4 Karakter", "5 Karakter", "6 Karakter", "7 Karakter", "8 Karakter"))
+            adapter = createDarkSpinnerAdapter(ctx, listOf("4 Karakter", "5 Karakter", "6 Karakter", "7 Karakter", "8 Karakter"))
             setSelection(2) // 6 karakter default
         }
         batchContainer.addView(tvCodeLenLabel)
         batchContainer.addView(spCodeLen)
 
-        val tvCharsetLabel = TextView(ctx).apply {
-            text = "Kombinasi Karakter:"
-            setTextColor(colorTextMuted)
-            textSize = 12f
-            setPadding(0, 12, 0, 4)
-        }
+        val tvCharsetLabel = createFieldLabel(ctx, "Kombinasi Karakter:")
         val spCharset = Spinner(ctx).apply {
             background = createInputBackground()
             setPadding(16, 16, 16, 16)
-            adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, listOf("Angka Saja (123456)", "Huruf Kecil & Angka (ab12cd)", "Huruf Besar & Angka (AB12CD)"))
+            adapter = createDarkSpinnerAdapter(ctx, listOf("Angka Saja (123456)", "Huruf Kecil & Angka (ab12cd)", "Huruf Besar & Angka (AB12CD)"))
             setSelection(0)
         }
         batchContainer.addView(tvCharsetLabel)
         batchContainer.addView(spCharset)
 
-        val tvBatchMode = TextView(ctx).apply {
-            text = "Format Login:"
-            setTextColor(colorTextMuted)
-            textSize = 12f
-            setPadding(0, 12, 0, 4)
-        }
+        val tvBatchMode = createFieldLabel(ctx, "Format Login:")
         val spMode = Spinner(ctx).apply {
             background = createInputBackground()
             setPadding(16, 16, 16, 16)
-            adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, listOf("Username = Password (Voucher)", "Username & Password Berbeda (Member)"))
+            adapter = createDarkSpinnerAdapter(ctx, listOf("Username = Password (Voucher)", "Username & Password Berbeda (Member)"))
             setSelection(0)
         }
         batchContainer.addView(tvBatchMode)
@@ -836,13 +774,14 @@ class AdminVouchersFragment : Fragment() {
         }
 
         val dialog = AlertDialog.Builder(ctx)
-            .setTitle("➕ Buat Voucher Hotspot")
+            .setCustomTitle(createCustomDialogHeader(ctx, "➕ Buat Voucher Hotspot"))
             .setView(scroll)
             .setPositiveButton("Simpan & Buat", null)
             .setNegativeButton("Batal", null)
             .create()
 
         dialog.setOnShowListener {
+            styleDialog(dialog, positiveColor = colorAccent, negativeColor = colorTextMuted)
             val btnPositive = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
             btnPositive.setOnClickListener {
                 val selProfileIdx = spProfile.selectedItemPosition
@@ -908,7 +847,12 @@ class AdminVouchersFragment : Fragment() {
         val progress = AlertDialog.Builder(ctx)
             .setMessage("Membuat voucher & mendaftarkan ke MikroTik...")
             .setCancelable(false)
-            .show()
+            .create()
+        progress.setOnShowListener {
+            progress.window?.setBackgroundDrawable(createDialogBackground())
+            progress.findViewById<TextView>(android.R.id.message)?.setTextColor(Color.WHITE)
+        }
+        progress.show()
 
         lifecycleScope.launch {
             val url = "${getBaseUrl()}/api/customer/app/admin/vouchers/create-single"
@@ -982,7 +926,7 @@ class AdminVouchersFragment : Fragment() {
 
         val layout = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(32, 24, 32, 20)
+            setPadding(32, 20, 32, 20)
         }
 
         // Voucher Preview Card
@@ -1155,11 +1099,16 @@ class AdminVouchersFragment : Fragment() {
         }
         layout.addView(btnCopy)
 
-        AlertDialog.Builder(ctx)
-            .setTitle("🎉 Voucher Berhasil Dibuat!")
+        val succDialog = AlertDialog.Builder(ctx)
+            .setCustomTitle(createCustomDialogHeader(ctx, "🎉 Voucher Berhasil Dibuat!"))
             .setView(layout)
             .setPositiveButton("Selesai", null)
-            .show()
+            .create()
+
+        succDialog.setOnShowListener {
+            styleDialog(succDialog, positiveColor = colorAccent)
+        }
+        succDialog.show()
     }
 
     private fun printSingleVoucherBT(
@@ -1183,13 +1132,18 @@ class AdminVouchersFragment : Fragment() {
             doPrintSingleVoucher(printers[0].address, false, companyName, profile, code, pass, priceFormatted, validity, contact, hotspotDns)
         } else {
             val names = printers.map { "${it.name} (${it.address})" }.toTypedArray()
-            AlertDialog.Builder(ctx)
-                .setTitle("Pilih Printer Thermal")
+            val printerDialog = AlertDialog.Builder(ctx)
+                .setCustomTitle(createCustomDialogHeader(ctx, "Pilih Printer Thermal"))
                 .setItems(names) { _, which ->
                     doPrintSingleVoucher(printers[which].address, false, companyName, profile, code, pass, priceFormatted, validity, contact, hotspotDns)
                 }
                 .setNegativeButton("Batal", null)
-                .show()
+                .create()
+
+            printerDialog.setOnShowListener {
+                styleDialog(printerDialog)
+            }
+            printerDialog.show()
         }
     }
 
@@ -1244,7 +1198,12 @@ class AdminVouchersFragment : Fragment() {
         val progress = AlertDialog.Builder(ctx)
             .setMessage("Membuat batch $qty voucher hotspot...")
             .setCancelable(false)
-            .show()
+            .create()
+        progress.setOnShowListener {
+            progress.window?.setBackgroundDrawable(createDialogBackground())
+            progress.findViewById<TextView>(android.R.id.message)?.setTextColor(Color.WHITE)
+        }
+        progress.show()
 
         lifecycleScope.launch {
             val url = "${getBaseUrl()}/api/customer/app/admin/vouchers/create-batch"
@@ -1286,8 +1245,8 @@ class AdminVouchersFragment : Fragment() {
                         val newBatchId = batchData?.optInt("batchId", 0) ?: 0
                         loadVouchers() // Reload list
 
-                        AlertDialog.Builder(ctx)
-                            .setTitle("🎉 Batch Berhasil Dibuat!")
+                        val batchSuccessDialog = AlertDialog.Builder(ctx)
+                            .setCustomTitle(createCustomDialogHeader(ctx, "🎉 Batch Berhasil Dibuat!"))
                             .setMessage("Batch #$newBatchId sebanyak $qty voucher berhasil disimpan dan sedang disinkronkan ke MikroTik.\n\nApakah ingin langsung cetak sekarang?")
                             .setPositiveButton("📄 Cetak A4 PDF") { _, _ ->
                                 if (newBatchId > 0) printBatchA4(newBatchId)
@@ -1300,7 +1259,13 @@ class AdminVouchersFragment : Fragment() {
                                 }
                             }
                             .setNegativeButton("Nanti", null)
-                            .show()
+                            .create()
+
+                        batchSuccessDialog.setOnShowListener {
+                            styleDialog(batchSuccessDialog, positiveColor = Color.parseColor("#38BDF8"), neutralColor = Color.parseColor("#4ADE80"), negativeColor = colorTextMuted)
+                            batchSuccessDialog.findViewById<TextView>(android.R.id.message)?.setTextColor(Color.parseColor("#E2E8F0"))
+                        }
+                        batchSuccessDialog.show()
                         return@launch
                     } else {
                         Toast.makeText(ctx, json.optString("message", "Gagal membuat batch"), Toast.LENGTH_LONG).show()
@@ -1322,14 +1287,19 @@ class AdminVouchersFragment : Fragment() {
         val printUrl = "${getBaseUrl()}/api/customer/app/admin/vouchers/batch/$batchId/print?token=${getToken()}"
 
         val options = arrayOf("🖨️ Cetak / Simpan PDF A4 (Ala Mikhmon)", "🌐 Buka di Browser HP")
-        AlertDialog.Builder(ctx)
-            .setTitle("Cetak / Export PDF A4")
+        val a4Dialog = AlertDialog.Builder(ctx)
+            .setCustomTitle(createCustomDialogHeader(ctx, "Cetak / Export PDF A4"))
             .setItems(options) { _, which ->
                 if (which == 0) {
                     val progress = AlertDialog.Builder(ctx)
                         .setMessage("Menyiapkan dokumen A4...")
                         .setCancelable(false)
-                        .show()
+                        .create()
+                    progress.setOnShowListener {
+                        progress.window?.setBackgroundDrawable(createDialogBackground())
+                        progress.findViewById<TextView>(android.R.id.message)?.setTextColor(Color.WHITE)
+                    }
+                    progress.show()
 
                     val webView = WebView(ctx)
                     webView.settings.javaScriptEnabled = true
@@ -1360,7 +1330,12 @@ class AdminVouchersFragment : Fragment() {
                 }
             }
             .setNegativeButton("Batal", null)
-            .show()
+            .create()
+
+        a4Dialog.setOnShowListener {
+            styleDialog(a4Dialog)
+        }
+        a4Dialog.show()
     }
 
     // ─── CONTINUOUS THERMAL BLUETOOTH PRINTING FOR BATCH ────────────────────
@@ -1381,7 +1356,12 @@ class AdminVouchersFragment : Fragment() {
         val progress = AlertDialog.Builder(ctx)
             .setMessage("Mengambil data voucher batch #$batchId...")
             .setCancelable(false)
-            .show()
+            .create()
+        progress.setOnShowListener {
+            progress.window?.setBackgroundDrawable(createDialogBackground())
+            progress.findViewById<TextView>(android.R.id.message)?.setTextColor(Color.WHITE)
+        }
+        progress.show()
 
         lifecycleScope.launch {
             val url = "${getBaseUrl()}/api/customer/app/admin/vouchers/batch/$batchId/vouchers"
@@ -1439,27 +1419,15 @@ class AdminVouchersFragment : Fragment() {
                     setPadding(32, 20, 32, 16)
                 }
 
-                val tvPrinterLabel = TextView(ctx).apply {
-                    text = "Pilih Printer Bluetooth:"
-                    setTextColor(colorTextMuted)
-                    textSize = 12f
-                    setPadding(0, 0, 0, 4)
-                }
                 val printerNames = printers.map { "${it.name} (${it.address})" }
                 val spPrinter = Spinner(ctx).apply {
                     background = createInputBackground()
                     setPadding(16, 16, 16, 16)
-                    adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, printerNames)
+                    adapter = createDarkSpinnerAdapter(ctx, printerNames)
                 }
-                printOptionsLayout.addView(tvPrinterLabel)
+                printOptionsLayout.addView(createFieldLabel(ctx, "Pilih Printer Bluetooth:"))
                 printOptionsLayout.addView(spPrinter)
 
-                val tvTargetLabel = TextView(ctx).apply {
-                    text = "Voucher yang Dicetak:"
-                    setTextColor(colorTextMuted)
-                    textSize = 12f
-                    setPadding(0, 12, 0, 4)
-                }
                 val targetOptions = listOf(
                     "Semua Voucher (${allVouchers.size} voucher)",
                     "Hanya Belum Terpakai (${unusedVouchers.size} voucher)",
@@ -1469,27 +1437,21 @@ class AdminVouchersFragment : Fragment() {
                 val spTarget = Spinner(ctx).apply {
                     background = createInputBackground()
                     setPadding(16, 16, 16, 16)
-                    adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, targetOptions)
+                    adapter = createDarkSpinnerAdapter(ctx, targetOptions)
                 }
-                printOptionsLayout.addView(tvTargetLabel)
+                printOptionsLayout.addView(createFieldLabel(ctx, "Voucher yang Dicetak:"))
                 printOptionsLayout.addView(spTarget)
 
-                val tvPaperLabel = TextView(ctx).apply {
-                    text = "Lebar Kertas Printer:"
-                    setTextColor(colorTextMuted)
-                    textSize = 12f
-                    setPadding(0, 12, 0, 4)
-                }
                 val spPaper = Spinner(ctx).apply {
                     background = createInputBackground()
                     setPadding(16, 16, 16, 16)
-                    adapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, listOf("58mm (Standar Portabel)", "80mm (Printer Kasir Besar)"))
+                    adapter = createDarkSpinnerAdapter(ctx, listOf("58mm (Standar Portabel)", "80mm (Printer Kasir Besar)"))
                 }
-                printOptionsLayout.addView(tvPaperLabel)
+                printOptionsLayout.addView(createFieldLabel(ctx, "Lebar Kertas Printer:"))
                 printOptionsLayout.addView(spPaper)
 
-                AlertDialog.Builder(ctx)
-                    .setTitle("🖨️ Cetak Bluetooth Bersambung")
+                val printDialog = AlertDialog.Builder(ctx)
+                    .setCustomTitle(createCustomDialogHeader(ctx, "🖨️ Cetak Bluetooth Bersambung"))
                     .setView(printOptionsLayout)
                     .setPositiveButton("Mulai Cetak") { _, _ ->
                         val selPrinter = printers[spPrinter.selectedItemPosition]
@@ -1519,7 +1481,12 @@ class AdminVouchersFragment : Fragment() {
                         )
                     }
                     .setNegativeButton("Batal", null)
-                    .show()
+                    .create()
+
+                printDialog.setOnShowListener {
+                    styleDialog(printDialog, positiveColor = Color.parseColor("#059669"))
+                }
+                printDialog.show()
 
             } catch (e: Exception) {
                 Toast.makeText(ctx, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -1557,10 +1524,14 @@ class AdminVouchersFragment : Fragment() {
         progressView.addView(tvStatus)
 
         val progressDialog = AlertDialog.Builder(ctx)
-            .setTitle("Mencetak Bersambung...")
+            .setCustomTitle(createCustomDialogHeader(ctx, "Mencetak Bersambung..."))
             .setView(progressView)
             .setCancelable(false)
-            .show()
+            .create()
+        progressDialog.setOnShowListener {
+            progressDialog.window?.setBackgroundDrawable(createDialogBackground())
+        }
+        progressDialog.show()
 
         lifecycleScope.launch {
             val res = BluetoothPrinterHelper.printVoucherBatchContinuous(
@@ -1586,11 +1557,16 @@ class AdminVouchersFragment : Fragment() {
                 val printedCount = res.getOrDefault(vouchers.size)
                 Toast.makeText(ctx, "✅ Berhasil mencetak $printedCount voucher bersambung!", Toast.LENGTH_LONG).show()
             } else {
-                AlertDialog.Builder(ctx)
-                    .setTitle("Gagal Cetak Bluetooth")
+                val errDialog = AlertDialog.Builder(ctx)
+                    .setCustomTitle(createCustomDialogHeader(ctx, "Gagal Cetak Bluetooth"))
                     .setMessage(res.exceptionOrNull()?.message ?: "Terjadi kesalahan koneksi printer Bluetooth.")
                     .setPositiveButton("Tutup", null)
-                    .show()
+                    .create()
+                errDialog.setOnShowListener {
+                    styleDialog(errDialog, positiveColor = colorRed)
+                    errDialog.findViewById<TextView>(android.R.id.message)?.setTextColor(Color.parseColor("#E2E8F0"))
+                }
+                errDialog.show()
             }
         }
     }
@@ -1653,14 +1629,19 @@ class AdminVouchersFragment : Fragment() {
     private fun confirmDeleteBatch(batchId: Int, profileName: String) {
         val ctx = context ?: return
 
-        AlertDialog.Builder(ctx)
-            .setTitle("Hapus Batch #$batchId?")
+        val delDialog = AlertDialog.Builder(ctx)
+            .setCustomTitle(createCustomDialogHeader(ctx, "Hapus Batch #$batchId?"))
             .setMessage("Voucher dalam paket \"$profileName\" pada batch ini akan dihapus dari sistem dan MikroTik.")
             .setPositiveButton("Hapus") { _, _ ->
                 executeDeleteBatch(batchId)
             }
             .setNegativeButton("Batal", null)
-            .show()
+            .create()
+        delDialog.setOnShowListener {
+            styleDialog(delDialog, positiveColor = colorRed, negativeColor = colorTextMuted)
+            delDialog.findViewById<TextView>(android.R.id.message)?.setTextColor(Color.parseColor("#E2E8F0"))
+        }
+        delDialog.show()
     }
 
     private fun executeDeleteBatch(batchId: Int) {
@@ -1668,7 +1649,12 @@ class AdminVouchersFragment : Fragment() {
         val progress = AlertDialog.Builder(ctx)
             .setMessage("Menghapus batch voucher...")
             .setCancelable(false)
-            .show()
+            .create()
+        progress.setOnShowListener {
+            progress.window?.setBackgroundDrawable(createDialogBackground())
+            progress.findViewById<TextView>(android.R.id.message)?.setTextColor(Color.WHITE)
+        }
+        progress.show()
 
         lifecycleScope.launch {
             val url = "${getBaseUrl()}/api/customer/app/admin/vouchers/batch/$batchId"
@@ -1714,7 +1700,8 @@ class AdminVouchersFragment : Fragment() {
             inputType = InputType.TYPE_CLASS_PHONE
             background = createInputBackground()
             setTextColor(colorTextWhite)
-            setHintTextColor(colorTextMuted)
+            setHintTextColor(Color.parseColor("#64748B"))
+            textSize = 13.5f
             setPadding(24, 20, 24, 20)
         }
 
@@ -1723,8 +1710,8 @@ class AdminVouchersFragment : Fragment() {
             addView(etPhone)
         }
 
-        AlertDialog.Builder(ctx)
-            .setTitle("Kirim Voucher via WhatsApp")
+        val waDialog = AlertDialog.Builder(ctx)
+            .setCustomTitle(createCustomDialogHeader(ctx, "Kirim Voucher via WhatsApp"))
             .setView(container)
             .setPositiveButton("Kirim") { _, _ ->
                 val phone = etPhone.text.toString().trim()
@@ -1735,7 +1722,12 @@ class AdminVouchersFragment : Fragment() {
                 }
             }
             .setNegativeButton("Batal", null)
-            .show()
+            .create()
+
+        waDialog.setOnShowListener {
+            styleDialog(waDialog, positiveColor = Color.parseColor("#2563EB"), negativeColor = colorTextMuted)
+        }
+        waDialog.show()
     }
 
     private fun openWhatsAppVoucher(
@@ -1789,7 +1781,95 @@ class AdminVouchersFragment : Fragment() {
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = 14f
-            setColor(Color.parseColor("#334155"))
+            setColor(Color.parseColor("#0F172A"))
+            setStroke(2, Color.parseColor("#334155"))
+        }
+    }
+
+    private fun createDialogBackground(): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 28f
+            setColor(Color.parseColor("#1E293B"))
+            setStroke(2, Color.parseColor("#334155"))
+        }
+    }
+
+    private fun createCustomDialogHeader(ctx: Context, title: String): View {
+        return LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(40, 36, 40, 16)
+            addView(TextView(ctx).apply {
+                text = title
+                textSize = 17.5f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+            })
+        }
+    }
+
+    private fun createFieldLabel(ctx: Context, text: String): TextView {
+        return TextView(ctx).apply {
+            this.text = text
+            setTextColor(Color.parseColor("#E2E8F0")) // Slate 200
+            textSize = 12.5f
+            setTypeface(null, Typeface.BOLD)
+            setPadding(0, 14, 0, 6)
+        }
+    }
+
+    private fun styleRadioButton(rb: RadioButton) {
+        rb.setTextColor(Color.WHITE)
+        rb.textSize = 13.5f
+        rb.buttonTintList = ColorStateList.valueOf(Color.parseColor("#38BDF8"))
+    }
+
+    private fun createDarkSpinnerAdapter(ctx: Context, items: List<String>): ArrayAdapter<String> {
+        return object : ArrayAdapter<String>(ctx, android.R.layout.simple_spinner_item, items) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val v = super.getView(position, convertView, parent)
+                (v as? TextView)?.apply {
+                    setTextColor(Color.WHITE)
+                    textSize = 13.5f
+                    setTypeface(null, Typeface.BOLD)
+                }
+                return v
+            }
+
+            override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val v = super.getDropDownView(position, convertView, parent)
+                (v as? TextView)?.apply {
+                    setTextColor(Color.WHITE)
+                    textSize = 13.5f
+                    setBackgroundColor(Color.parseColor("#1E293B"))
+                    setPadding(32, 28, 32, 28)
+                }
+                return v
+            }
+        }.apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+    }
+
+    private fun styleDialog(
+        dialog: AlertDialog,
+        positiveColor: Int = Color.parseColor("#38BDF8"),
+        negativeColor: Int = Color.parseColor("#94A3B8"),
+        neutralColor: Int = Color.parseColor("#4ADE80")
+    ) {
+        dialog.window?.setBackgroundDrawable(createDialogBackground())
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.apply {
+            setTextColor(positiveColor)
+            textSize = 13.5f
+            setTypeface(null, Typeface.BOLD)
+        }
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.apply {
+            setTextColor(negativeColor)
+            textSize = 13.5f
+        }
+        dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.apply {
+            setTextColor(neutralColor)
+            textSize = 13.5f
         }
     }
 
