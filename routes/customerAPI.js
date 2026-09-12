@@ -3166,9 +3166,9 @@ router.post('/auth/login', (req, res) => {
   }
 
   // 1. Check Root Administrator
-  const adminUser = getSetting('admin_username', 'admin');
-  const adminPass = getSetting('admin_password', 'admin123');
-  if (inputUser === adminUser && inputPass === adminPass) {
+  const adminUser = String(getSetting('admin_username', 'admin')).trim();
+  const adminPass = String(getSetting('admin_password', 'admin123')).trim();
+  if (inputUser.toLowerCase() === adminUser.toLowerCase() && inputPass === adminPass) {
     const adminObj = { id: 1, name: 'Administrator', username: adminUser, role: 'admin' };
     const token = generateApiToken({ id: 1, adminId: 1, name: 'Administrator', username: adminUser, role: 'admin' });
     return res.json({
