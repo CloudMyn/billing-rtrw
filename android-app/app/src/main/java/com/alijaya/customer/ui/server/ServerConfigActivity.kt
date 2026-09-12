@@ -203,7 +203,7 @@ class ServerConfigActivity : AppCompatActivity() {
             binding.etServerUrl.setText(SessionManager.DEFAULT_SERVER_URL)
             binding.rbCustomer.isChecked = true
             updatePreviewUrl()
-            Toast.makeText(this, "Server direset ke Default (Alijaya Customer)", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Server direset ke Default", Toast.LENGTH_SHORT).show()
         }
     }
 

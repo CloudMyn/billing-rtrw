@@ -34,7 +34,7 @@
                 android:id="@+id/tv_top_isp_name"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="ALIJAYA DIGITAL NETWORK"
+                android:text="@string/app_name"
                 android:textColor="@color/text_white"
                 android:textSize="14sp"
                 android:textStyle="bold" />

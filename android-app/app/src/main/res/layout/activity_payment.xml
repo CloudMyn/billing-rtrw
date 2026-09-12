@@ -288,7 +288,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:text=" Pembayaran Tunai: Dapat dibayarkan langsung di Kasir Kantor atau Agen Resmi Alijaya.
+                    android:text=" Pembayaran Tunai: Dapat dibayarkan langsung di Kasir Kantor atau Agen Resmi.
  Pembayaran Transfer Manual: Harap simpan bukti transfer lalu tekan tombol Konfirmasi WhatsApp di bawah ini."
                     android:textColor="@color/text_muted"
                     android:textSize="12sp" />

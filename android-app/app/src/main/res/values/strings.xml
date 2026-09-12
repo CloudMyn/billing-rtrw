@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Alijaya Customer</string>
+    <string name="app_name">billing-rtrw</string>
     <string name="title_home">Beranda</string>
     <string name="title_invoices">Tagihan</string>
     <string name="title_vouchers">Voucher</string>
