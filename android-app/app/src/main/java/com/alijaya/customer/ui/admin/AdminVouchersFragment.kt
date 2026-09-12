@@ -77,7 +77,7 @@ class AdminVouchersFragment : Fragment() {
     private var cachedProfiles = JSONArray()
     private var cachedCompanyName = "ISP NETWORK"
     private var cachedCompanyPhone = ""
-    private var cachedHotspotDns = "wifi.id"
+    private var cachedHotspotDns = ""
     private var cachedDefaultComment = "vc-admin"
 
     private fun httpClient() = OkHttpClient.Builder()
@@ -490,7 +490,7 @@ class AdminVouchersFragment : Fragment() {
                 cachedProfiles = data.optJSONArray("profiles") ?: JSONArray()
                 cachedCompanyName = data.optString("companyName", "ISP NETWORK")
                 cachedCompanyPhone = data.optString("companyPhone", "")
-                cachedHotspotDns = data.optString("hotspotDns", "wifi.id")
+                cachedHotspotDns = data.optString("hotspotDns", "").trim().let { if (it == "wifi.id") "" else it }
                 cachedDefaultComment = data.optString("defaultComment", "vc-admin")
 
                 if (cachedProfiles.length() == 0) {
@@ -516,26 +516,101 @@ class AdminVouchersFragment : Fragment() {
         }
         scroll.addView(layout)
 
-        // Mode Switch (Single vs Batch)
+        // Containers for Single vs Batch
+        val singleContainer = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        val batchContainer = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+
+        // Mode Switch (Single vs Batch) Segmented Tabs
         layout.addView(createFieldLabel(ctx, "Tipe Pembuatan Voucher:"))
 
-        val radioGroupMode = RadioGroup(ctx).apply {
+        var isBatchMode = false
+
+        val tabModeContainer = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, 14)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, 4, 0, 14)
+            }
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 16f
+                setColor(Color.parseColor("#0F172A"))
+                setStroke(2, Color.parseColor("#334155"))
+            }
+            setPadding(6, 6, 6, 6)
         }
-        val rbSingle = RadioButton(ctx).apply {
+
+        val btnTabSingle = TextView(ctx).apply {
             text = "🎯 Satuan (1 Voucher)"
-            isChecked = true
-            styleRadioButton(this)
+            textSize = 13f
+            setTypeface(null, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(16, 22, 16, 22)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        val rbBatch = RadioButton(ctx).apply {
+
+        val btnTabBatch = TextView(ctx).apply {
             text = "📦 Banyak (Batch)"
-            isChecked = false
-            styleRadioButton(this)
+            textSize = 13f
+            setTypeface(null, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(16, 22, 16, 22)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        radioGroupMode.addView(rbSingle)
-        radioGroupMode.addView(rbBatch)
-        layout.addView(radioGroupMode)
+
+        fun updateModeTabs() {
+            if (!isBatchMode) {
+                btnTabSingle.setTextColor(Color.WHITE)
+                btnTabSingle.background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = 12f
+                    setColor(Color.parseColor("#2563EB"))
+                }
+                btnTabBatch.setTextColor(Color.parseColor("#94A3B8"))
+                btnTabBatch.background = null
+
+                singleContainer.visibility = View.VISIBLE
+                batchContainer.visibility = View.GONE
+            } else {
+                btnTabBatch.setTextColor(Color.WHITE)
+                btnTabBatch.background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = 12f
+                    setColor(Color.parseColor("#2563EB"))
+                }
+                btnTabSingle.setTextColor(Color.parseColor("#94A3B8"))
+                btnTabSingle.background = null
+
+                singleContainer.visibility = View.GONE
+                batchContainer.visibility = View.VISIBLE
+            }
+        }
+
+        btnTabSingle.setOnClickListener {
+            if (isBatchMode) {
+                isBatchMode = false
+                updateModeTabs()
+            }
+        }
+
+        btnTabBatch.setOnClickListener {
+            if (!isBatchMode) {
+                isBatchMode = true
+                updateModeTabs()
+            }
+        }
+
+        tabModeContainer.addView(btnTabSingle)
+        tabModeContainer.addView(btnTabBatch)
+        layout.addView(tabModeContainer)
+        updateModeTabs()
 
         // Profile MikroTik Selector
         layout.addView(createFieldLabel(ctx, "Pilih Hotspot Profile (MikroTik):"))
@@ -612,30 +687,45 @@ class AdminVouchersFragment : Fragment() {
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
-        // ── CONTAINER FOR SINGLE MODE FIELDS ────────────────────────
-        val singleContainer = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-
+        // ── POPULATE SINGLE MODE FIELDS ─────────────────────────────
         singleContainer.addView(createFieldLabel(ctx, "Metode Kode Voucher:"))
 
-        val rgSingleMethod = RadioGroup(ctx).apply {
+        var isSingleManual = false
+
+        val tabSingleMethod = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, 8)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, 4, 0, 10)
+            }
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 14f
+                setColor(Color.parseColor("#0F172A"))
+                setStroke(2, Color.parseColor("#334155"))
+            }
+            setPadding(5, 5, 5, 5)
         }
-        val rbSingleAuto = RadioButton(ctx).apply {
-            text = "Otomatis"
-            isChecked = true
-            styleRadioButton(this)
+
+        val btnTabAuto = TextView(ctx).apply {
+            text = "⚡ Otomatis"
+            textSize = 12.5f
+            setTypeface(null, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(12, 18, 12, 18)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        val rbSingleManual = RadioButton(ctx).apply {
-            text = "Manual (User & Pass)"
-            isChecked = false
-            styleRadioButton(this)
+
+        val btnTabManual = TextView(ctx).apply {
+            text = "✏️ Manual (User & Pass)"
+            textSize = 12.5f
+            setTypeface(null, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(12, 18, 12, 18)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        rgSingleMethod.addView(rbSingleAuto)
-        rgSingleMethod.addView(rbSingleManual)
-        singleContainer.addView(rgSingleMethod)
 
         // Manual Fields
         val manualContainer = LinearLayout(ctx).apply {
@@ -665,6 +755,50 @@ class AdminVouchersFragment : Fragment() {
         manualContainer.addView(etUser)
         manualContainer.addView(tvPassLabel)
         manualContainer.addView(etPass)
+
+        fun updateSingleMethodTabs() {
+            if (!isSingleManual) {
+                btnTabAuto.setTextColor(Color.WHITE)
+                btnTabAuto.background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = 10f
+                    setColor(Color.parseColor("#0284C7"))
+                }
+                btnTabManual.setTextColor(Color.parseColor("#94A3B8"))
+                btnTabManual.background = null
+                manualContainer.visibility = View.GONE
+            } else {
+                btnTabManual.setTextColor(Color.WHITE)
+                btnTabManual.background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = 10f
+                    setColor(Color.parseColor("#0284C7"))
+                }
+                btnTabAuto.setTextColor(Color.parseColor("#94A3B8"))
+                btnTabAuto.background = null
+                manualContainer.visibility = View.VISIBLE
+            }
+        }
+
+        btnTabAuto.setOnClickListener {
+            if (isSingleManual) {
+                isSingleManual = false
+                updateSingleMethodTabs()
+            }
+        }
+
+        btnTabManual.setOnClickListener {
+            if (!isSingleManual) {
+                isSingleManual = true
+                updateSingleMethodTabs()
+            }
+        }
+
+        tabSingleMethod.addView(btnTabAuto)
+        tabSingleMethod.addView(btnTabManual)
+        singleContainer.addView(tabSingleMethod)
+        updateSingleMethodTabs()
+
         singleContainer.addView(manualContainer)
 
         // Buyer Phone (for WhatsApp)
@@ -681,22 +815,9 @@ class AdminVouchersFragment : Fragment() {
         singleContainer.addView(tvBuyerPhone)
         singleContainer.addView(etBuyerPhone)
 
-        rgSingleMethod.setOnCheckedChangeListener { _, checkedId ->
-            if (checkedId == rbSingleManual.id) {
-                manualContainer.visibility = View.VISIBLE
-            } else {
-                manualContainer.visibility = View.GONE
-            }
-        }
-
         layout.addView(singleContainer)
 
-        // ── CONTAINER FOR BATCH MODE FIELDS ─────────────────────────
-        val batchContainer = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
-        }
-
+        // ── POPULATE BATCH MODE FIELDS ──────────────────────────────
         val tvQtyLabel = createFieldLabel(ctx, "Jumlah Voucher (Qty):")
         val etQty = EditText(ctx).apply {
             background = createInputBackground()
@@ -753,17 +874,6 @@ class AdminVouchersFragment : Fragment() {
 
         layout.addView(batchContainer)
 
-        // Toggle Single vs Batch Containers
-        radioGroupMode.setOnCheckedChangeListener { _, checkedId ->
-            if (checkedId == rbSingle.id) {
-                singleContainer.visibility = View.VISIBLE
-                batchContainer.visibility = View.GONE
-            } else {
-                singleContainer.visibility = View.GONE
-                batchContainer.visibility = View.VISIBLE
-            }
-        }
-
         // Trigger initial profile selection filling
         if (cachedProfiles.length() > 0) {
             val p0 = cachedProfiles.getJSONObject(0)
@@ -793,14 +903,13 @@ class AdminVouchersFragment : Fragment() {
                 val priceVal = etPrice.text.toString().trim().toDoubleOrNull() ?: 0.0
                 val validityVal = etValidity.text.toString().trim()
 
-                if (rbSingle.isChecked) {
+                if (!isBatchMode) {
                     // Single voucher creation
-                    val isManual = rbSingleManual.isChecked
-                    val u = if (isManual) etUser.text.toString().trim() else ""
-                    val p = if (isManual) etPass.text.toString().trim() else ""
+                    val u = if (isSingleManual) etUser.text.toString().trim() else ""
+                    val p = if (isSingleManual) etPass.text.toString().trim() else ""
                     val buyerPhone = etBuyerPhone.text.toString().trim()
 
-                    if (isManual && u.isEmpty()) {
+                    if (isSingleManual && u.isEmpty()) {
                         Toast.makeText(ctx, "Username manual wajib diisi", Toast.LENGTH_SHORT).show()
                         return@setOnClickListener
                     }
@@ -920,7 +1029,7 @@ class AdminVouchersFragment : Fragment() {
         val buyerPhone = vData.optString("buyerPhone", "")
         val companyName = vData.optString("companyName", cachedCompanyName)
         val companyPhone = vData.optString("companyPhone", cachedCompanyPhone)
-        val hotspotDns = vData.optString("hotspotDns", cachedHotspotDns)
+        val hotspotDns = vData.optString("hotspotDns", cachedHotspotDns).trim().let { if (it == "wifi.id") "" else it }
 
         val isSame = code == pass
 
@@ -1015,19 +1124,23 @@ class AdminVouchersFragment : Fragment() {
             codeBox.addView(tvP)
         }
 
-        val tvLoginUrl = TextView(ctx).apply {
-            text = "🌐 Login: http://$hotspotDns"
-            setTextColor(colorTextMuted)
-            textSize = 11.5f
-            gravity = Gravity.CENTER
-            setPadding(0, 12, 0, 0)
-        }
-
         cardLayout.addView(tvComp)
         cardLayout.addView(tvPkg)
         cardLayout.addView(tvVal)
         cardLayout.addView(codeBox)
-        cardLayout.addView(tvLoginUrl)
+
+        val hasDns = hotspotDns.isNotEmpty() && hotspotDns != "wifi.id"
+        if (hasDns) {
+            val tvLoginUrl = TextView(ctx).apply {
+                text = "🌐 Login: http://$hotspotDns"
+                setTextColor(colorTextMuted)
+                textSize = 11.5f
+                gravity = Gravity.CENTER
+                setPadding(0, 12, 0, 0)
+            }
+            cardLayout.addView(tvLoginUrl)
+        }
+
         previewCard.addView(cardLayout)
         layout.addView(previewCard)
 
@@ -1069,11 +1182,7 @@ class AdminVouchersFragment : Fragment() {
                 setColor(Color.parseColor("#2563EB"))
             }
             setOnClickListener {
-                if (buyerPhone.isNotEmpty()) {
-                    openWhatsAppVoucher(buyerPhone, code, pass, profile, validity, priceFormatted, companyName, hotspotDns, companyPhone)
-                } else {
-                    promptWhatsAppPhone(code, pass, profile, validity, priceFormatted, companyName, hotspotDns, companyPhone)
-                }
+                promptSendWhatsApp(code, pass, profile, validity, priceFormatted, buyerPhone, companyName, hotspotDns, companyPhone)
             }
         }
         layout.addView(btnSendWA)
@@ -1391,7 +1500,7 @@ class AdminVouchersFragment : Fragment() {
                 val vArr = data?.optJSONArray("vouchers") ?: JSONArray()
                 val companyName = data?.optString("companyName", cachedCompanyName) ?: cachedCompanyName
                 val companyPhone = data?.optString("companyPhone", cachedCompanyPhone) ?: cachedCompanyPhone
-                val hotspotDns = data?.optString("hotspotDns", cachedHotspotDns) ?: cachedHotspotDns
+                val hotspotDns = (data?.optString("hotspotDns", cachedHotspotDns) ?: cachedHotspotDns).trim().let { if (it == "wifi.id") "" else it }
 
                 if (vArr.length() == 0) {
                     Toast.makeText(ctx, "Tidak ada voucher pada batch ini", Toast.LENGTH_SHORT).show()
@@ -1684,50 +1793,187 @@ class AdminVouchersFragment : Fragment() {
     }
 
     // ─── WHATSAPP SHARING HELPERS ───────────────────────────────────────────
-    private fun promptWhatsAppPhone(
+    private fun promptSendWhatsApp(
         code: String,
         pass: String,
         profile: String,
         validity: String,
         price: String,
+        initialPhone: String,
         companyName: String,
         hotspotDns: String,
         companyPhone: String
     ) {
         val ctx = context ?: return
+
+        val container = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(40, 24, 40, 24)
+        }
+
+        val tvDesc = TextView(ctx).apply {
+            text = "Kirim voucher ke pembeli menggunakan Gateway WhatsApp server (otomatis) atau buka aplikasi WhatsApp di perangkat ini."
+            setTextColor(colorTextMuted)
+            textSize = 12f
+            setPadding(0, 0, 0, 16)
+        }
+        container.addView(tvDesc)
+
+        val tvLabel = TextView(ctx).apply {
+            text = "Nomor WhatsApp Pembeli:"
+            setTextColor(colorTextWhite)
+            textSize = 13f
+            setTypeface(null, Typeface.BOLD)
+            setPadding(0, 0, 0, 8)
+        }
+        container.addView(tvLabel)
+
         val etPhone = EditText(ctx).apply {
-            hint = "Nomor WhatsApp (misal: 08123456789)"
+            hint = "Contoh: 08123456789"
             inputType = InputType.TYPE_CLASS_PHONE
             background = createInputBackground()
             setTextColor(colorTextWhite)
             setHintTextColor(Color.parseColor("#64748B"))
-            textSize = 13.5f
+            textSize = 14f
             setPadding(24, 20, 24, 20)
-        }
-
-        val container = LinearLayout(ctx).apply {
-            setPadding(40, 20, 40, 10)
-            addView(etPhone)
-        }
-
-        val waDialog = AlertDialog.Builder(ctx)
-            .setCustomTitle(createCustomDialogHeader(ctx, "Kirim Voucher via WhatsApp"))
-            .setView(container)
-            .setPositiveButton("Kirim") { _, _ ->
-                val phone = etPhone.text.toString().trim()
-                if (phone.isNotEmpty()) {
-                    openWhatsAppVoucher(phone, code, pass, profile, validity, price, companyName, hotspotDns, companyPhone)
-                } else {
-                    Toast.makeText(ctx, "Nomor WhatsApp belum diisi", Toast.LENGTH_SHORT).show()
-                }
+            if (initialPhone.isNotEmpty()) {
+                setText(initialPhone)
             }
-            .setNegativeButton("Batal", null)
+        }
+        container.addView(etPhone)
+
+        val spacer = View(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 24)
+        }
+        container.addView(spacer)
+
+        // Action Buttons: Server Gateway & Local App
+        val btnServerGateway = Button(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                88
+            ).apply {
+                setMargins(0, 0, 0, 12)
+            }
+            text = "🚀 Kirim via Gateway WhatsApp"
+            setTextColor(colorTextWhite)
+            textSize = 13f
+            setTypeface(null, Typeface.BOLD)
+            background = GradientDrawable().apply {
+                cornerRadius = 14f
+                setColor(Color.parseColor("#059669")) // Emerald green
+            }
+        }
+        container.addView(btnServerGateway)
+
+        val btnLocalWA = Button(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                88
+            ).apply {
+                setMargins(0, 0, 0, 4)
+            }
+            text = "💬 Buka Aplikasi WhatsApp HP"
+            setTextColor(colorTextWhite)
+            textSize = 13f
+            setTypeface(null, Typeface.BOLD)
+            background = GradientDrawable().apply {
+                cornerRadius = 14f
+                setColor(Color.parseColor("#2563EB")) // Blue
+            }
+        }
+        container.addView(btnLocalWA)
+
+        val dialog = AlertDialog.Builder(ctx)
+            .setCustomTitle(createCustomDialogHeader(ctx, "Kirim Voucher WhatsApp"))
+            .setView(container)
+            .setNegativeButton("Tutup", null)
             .create()
 
-        waDialog.setOnShowListener {
-            styleDialog(waDialog, positiveColor = Color.parseColor("#2563EB"), negativeColor = colorTextMuted)
+        dialog.setOnShowListener {
+            styleDialog(dialog, negativeColor = colorTextMuted)
         }
-        waDialog.show()
+
+        btnServerGateway.setOnClickListener {
+            val phone = etPhone.text.toString().trim()
+            if (phone.isEmpty()) {
+                Toast.makeText(ctx, "Nomor WhatsApp belum diisi", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            btnServerGateway.isEnabled = false
+            btnServerGateway.text = "Mengirim via Server..."
+
+            sendVoucherViaServerGateway(phone, code, pass, profile, validity, price) { ok, msg ->
+                if (!isAdded) return@sendVoucherViaServerGateway
+                btnServerGateway.isEnabled = true
+                btnServerGateway.text = "🚀 Kirim via Gateway WhatsApp"
+
+                if (ok) {
+                    Toast.makeText(ctx, "✅ $msg", Toast.LENGTH_LONG).show()
+                    dialog.dismiss()
+                } else {
+                    AlertDialog.Builder(ctx)
+                        .setTitle("Gagal Kirim WhatsApp")
+                        .setMessage(msg)
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            }
+        }
+
+        btnLocalWA.setOnClickListener {
+            val phone = etPhone.text.toString().trim()
+            if (phone.isEmpty()) {
+                Toast.makeText(ctx, "Nomor WhatsApp belum diisi", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            openWhatsAppVoucher(phone, code, pass, profile, validity, price, companyName, hotspotDns, companyPhone)
+            dialog.dismiss()
+        }
+
+        dialog.show()
+    }
+
+    private fun sendVoucherViaServerGateway(
+        phone: String,
+        code: String,
+        pass: String,
+        profile: String,
+        validity: String,
+        price: String,
+        onComplete: (Boolean, String) -> Unit
+    ) {
+        lifecycleScope.launch {
+            val res = withContext(Dispatchers.IO) {
+                try {
+                    val url = "${getBaseUrl()}/api/customer/app/admin/vouchers/send-wa"
+                    val bodyJson = JSONObject().apply {
+                        put("phone", phone)
+                        put("code", code)
+                        put("password", pass)
+                        put("profile", profile)
+                        put("validity", validity)
+                        put("price", price)
+                    }
+                    val reqBody = bodyJson.toString().toRequestBody("application/json".toMediaType())
+                    val req = Request.Builder()
+                        .url(url)
+                        .addHeader("Authorization", "Bearer ${getToken()}")
+                        .post(reqBody)
+                        .build()
+                    val resp = httpClient().newCall(req).execute()
+                    val respStr = resp.body?.string() ?: ""
+                    val json = JSONObject(respStr)
+                    val ok = json.optBoolean("success", false)
+                    val msg = json.optString("message", if (ok) "Voucher berhasil dikirim" else "Gagal mengirim WhatsApp")
+                    Pair(ok, msg)
+                } catch (e: Exception) {
+                    Pair(false, e.message ?: "Kesalahan koneksi ke server")
+                }
+            }
+            onComplete(res.first, res.second)
+        }
     }
 
     private fun openWhatsAppVoucher(
@@ -1761,7 +2007,9 @@ class AdminVouchersFragment : Fragment() {
                     append("🔑 *Password:* `$pass`\n\n")
                 }
 
-                append("🌐 *Login URL:* http://$hotspotDns\n")
+                if (hotspotDns.isNotEmpty() && hotspotDns != "wifi.id") {
+                    append("🌐 *Login URL:* http://$hotspotDns\n")
+                }
                 if (companyPhone.isNotEmpty()) {
                     append("📞 *Bantuan / CS:* $companyPhone\n")
                 }

@@ -1463,7 +1463,25 @@ router.get('/app/admin/vouchers/options', requireAdminApiAuth, async (req, res) 
     const settings = getSettingsWithCache();
     const companyName = settings.company_header || settings.company_name || 'ISP NETWORK';
     const companyPhone = settings.company_phone || '';
-    const hotspotDns = settings.hotspot_dns || settings.hotspot_name || 'wifi.id';
+    let hotspotDns = (settings.hotspot_dns || settings.hotspot_name || '').trim();
+    if (hotspotDns === 'wifi.id') hotspotDns = '';
+
+    // If not in settings, try fetching dns-name from MikroTik /ip/hotspot/profile
+    if (!hotspotDns) {
+      try {
+        const mikrotikConn = await mikrotikService.getApiConnection(routerId);
+        if (mikrotikConn) {
+          const hpProfiles = await mikrotikConn.write('/ip/hotspot/profile/print');
+          if (Array.isArray(hpProfiles)) {
+            const withDns = hpProfiles.find(h => (h['dns-name'] || h.dnsName) && (h['dns-name'] || h.dnsName).trim() !== '');
+            if (withDns) {
+              hotspotDns = (withDns['dns-name'] || withDns.dnsName).trim();
+            }
+          }
+        }
+      } catch (_e) {}
+    }
+    if (hotspotDns === 'wifi.id') hotspotDns = '';
 
     const roleName = (req.admin?.role === 'cashier' || req.admin?.username?.toLowerCase().includes('kasir')) 
       ? (req.admin?.username || 'kasir') 
@@ -1556,7 +1574,8 @@ router.post('/app/admin/vouchers/create-single', requireAdminApiAuth, express.js
     const settings = getSettingsWithCache();
     const companyName = settings.company_header || settings.company_name || 'ISP NETWORK';
     const companyPhone = settings.company_phone || '';
-    const hotspotDns = settings.hotspot_dns || settings.hotspot_name || 'wifi.id';
+    let hotspotDns = (settings.hotspot_dns || settings.hotspot_name || '').trim();
+    if (hotspotDns === 'wifi.id') hotspotDns = '';
 
     res.json({
       success: true,
@@ -1704,7 +1723,8 @@ router.get('/app/admin/vouchers/batch/:id/vouchers', requireAdminApiAuth, (req, 
     const settings = getSettingsWithCache();
     const companyName = settings.company_header || settings.company_name || 'ISP NETWORK';
     const companyPhone = settings.company_phone || '';
-    const hotspotDns = settings.hotspot_dns || settings.hotspot_name || 'wifi.id';
+    let hotspotDns = (settings.hotspot_dns || settings.hotspot_name || '').trim();
+    if (hotspotDns === 'wifi.id') hotspotDns = '';
 
     res.json({
       success: true,
@@ -1718,6 +1738,60 @@ router.get('/app/admin/vouchers/batch/:id/vouchers', requireAdminApiAuth, (req, 
     });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// Send Voucher directly via active WhatsApp Gateway (Baileys / Fonnte / Meta)
+router.post('/app/admin/vouchers/send-wa', requireAdminApiAuth, async (req, res) => {
+  try {
+    let { phone, code, password, profile, validity, price } = req.body;
+    if (!phone || !code) {
+      return res.status(400).json({ success: false, message: 'Nomor WhatsApp dan Kode Voucher wajib diisi' });
+    }
+
+    let p = String(phone).replace(/[^0-9]/g, '');
+    if (p.startsWith('08')) p = '62' + p.substring(1);
+    if (!p.startsWith('62')) p = '62' + p;
+
+    const settings = getSettingsWithCache();
+    const companyName = settings.company_header || settings.company_name || 'ISP NETWORK';
+    const companyPhone = settings.company_phone || '';
+    let hotspotDns = (settings.hotspot_dns || settings.hotspot_name || '').trim();
+    if (hotspotDns === 'wifi.id') hotspotDns = '';
+
+    const pass = password || code;
+    const isSame = code === pass;
+
+    let msg = `🎫 *VOUCHER INTERNET HOTSPOT*\n`;
+    msg += `--------------------------------\n`;
+    msg += `🏢 *${companyName}*\n`;
+    msg += `📦 *Paket:* ${profile || 'Hotspot'}\n`;
+    if (validity && validity !== '-') msg += `⏱️ *Masa Aktif:* ${validity}\n`;
+    if (price) msg += `💰 *Tarif:* ${price}\n\n`;
+
+    if (isSame) {
+      msg += `👤 *Kode Login:* \`${code}\`\n\n`;
+    } else {
+      msg += `👤 *Username:* \`${code}\`\n`;
+      msg += `🔑 *Password:* \`${pass}\`\n\n`;
+    }
+
+    if (hotspotDns) {
+      msg += `🌐 *Login URL:* http://${hotspotDns}\n`;
+    }
+    if (companyPhone) {
+      msg += `📞 *Bantuan / CS:* ${companyPhone}\n`;
+    }
+    msg += `--------------------------------\n`;
+    msg += `Sambungkan perangkat ke WiFi, lalu masukkan kode login di atas. Terima kasih!`;
+
+    const whatsappService = require('../services/whatsappService');
+    await whatsappService.sendWhatsAppMessage(p, msg);
+
+    res.json({ success: true, message: `Voucher berhasil dikirim ke WhatsApp ${phone}` });
+  } catch (err) {
+    logger.error('[Voucher Send WA] Error: ' + err.message);
+    res.status(500).json({ success: false, message: err.message || 'Gagal mengirim pesan WhatsApp' });
   }
 });
 
@@ -1741,7 +1815,8 @@ router.get('/app/admin/vouchers/batch/:id/print', (req, res) => {
     const settings = getSettingsWithCache();
     const companyName = settings.company_header || settings.company_name || 'ISP NETWORK';
     const companyPhone = settings.company_phone || '';
-    const hotspotDns = settings.hotspot_dns || settings.hotspot_name || 'wifi.id';
+    let hotspotDns = (settings.hotspot_dns || settings.hotspot_name || '').trim();
+    if (hotspotDns === 'wifi.id') hotspotDns = '';
     const priceText = Number(batch.price || 0).toLocaleString('id-ID');
     const validityText = batch.validity || '-';
 
@@ -1922,8 +1997,8 @@ router.get('/app/admin/vouchers/batch/:id/print', (req, res) => {
             `}
           </div>
           <div class="v-footer">
-            <span class="v-dns">🌐 ${escapeHtml(hotspotDns)}</span>
-            <span>📞 ${escapeHtml(companyPhone || '-')}</span>
+            <span class="v-dns">${hotspotDns ? `🌐 ${escapeHtml(hotspotDns)}` : ''}</span>
+            <span>${companyPhone ? `📞 ${escapeHtml(companyPhone)}` : ''}</span>
           </div>
         </div>
         `;
