@@ -238,11 +238,11 @@ Aplikasi Android resmi **Alijaya** adalah aplikasi native multifungsi untuk semu
 1. **Langsung dari Web Server**:
    Akses link berikut melalui browser di smartphone Anda:
    ```text
-   http://[IP-SERVER]:3001/downloads/AlijayaCustomer.apk
+   http://[IP-SERVER]:3001/downloads/billing-rtrw.apk
    ```
    *(Ganti `[IP-SERVER]` dan `3001` sesuai IP/Domain dan Port server billing Anda)*.
 2. **File Lokal di Repository**:
-   File APK siap install juga tersedia di root proyek: `AlijayaCustomer.apk` atau `public/downloads/AlijayaCustomer.apk`.
+   File APK siap install juga tersedia di root proyek: `billing-rtrw.apk` atau `public/downloads/billing-rtrw.apk`.
 
 ---
 
