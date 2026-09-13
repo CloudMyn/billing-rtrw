@@ -264,8 +264,8 @@ router.get('/app/version', (req, res) => {
     data: {
       versionCode: 2,
       versionName: "1.2.0",
-      downloadUrl: "/downloads/AlijayaCustomer.apk",
-      apkFileName: "AlijayaCustomer.apk",
+      downloadUrl: "/downloads/billing-rtrw.apk",
+      apkFileName: "billing-rtrw.apk",
       releaseNotes: "• Tampilan Barcode QRIS Real-time Dinamis dengan Kode Unik\n• Fitur Pembaruan Otomatis APK Langsung dari Server\n• Peningkatan Responsivitas Navigasi & Formulir Native",
       forceUpdate: false
     }
@@ -336,6 +336,7 @@ router.get('/app/admin/customers', requireAdminApiAuth, (req, res) => {
     const search = String(req.query.search || '').trim();
     let q = `
       SELECT c.id, c.name, c.phone, c.address, c.status, c.pppoe_username, c.isolate_day, c.package_id, c.area,
+             COALESCE(c.balance, 0) as balance,
              p.name as package_name, p.price as package_price,
              (SELECT count(*) FROM invoices WHERE customer_id = c.id AND (status = 'unpaid' OR status IS NULL)) as unpaid_count,
              (SELECT id FROM invoices WHERE customer_id = c.id AND (status = 'unpaid' OR status IS NULL) ORDER BY id DESC LIMIT 1) as latest_unpaid_invoice_id,
@@ -3105,7 +3106,14 @@ router.get('/app/customer/topup/status/:id', requireCustomerApiAuth, (req, res) 
 router.get('/app/customer/ppob/catalog', (req, res) => {
   try {
     const catalog = getAgentPulsaCatalog();
-    res.json({ success: true, data: catalog });
+    const prods = Array.isArray(catalog.products) ? catalog.products : (Array.isArray(catalog) ? catalog : []);
+    const cats = Array.isArray(catalog.categories) ? catalog.categories : [];
+    res.json({
+      success: true,
+      data: prods,
+      products: prods,
+      categories: cats
+    });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
   }
@@ -3119,7 +3127,8 @@ router.post('/app/customer/ppob/order', requireCustomerApiAuth, async (req, res)
 
     const customer = req.customer;
     const catalog = getAgentPulsaCatalog();
-    const product = catalog.find(p => p.sku === sku);
+    const prods = Array.isArray(catalog.products) ? catalog.products : (Array.isArray(catalog) ? catalog : []);
+    const product = prods.find(p => p.sku === sku);
     if (!product) return res.status(404).json({ success: false, message: 'Produk PPOB tidak ditemukan' });
 
     const price = Number(product.price_sell || product.price || 0);
@@ -3137,16 +3146,68 @@ router.post('/app/customer/ppob/order', requireCustomerApiAuth, async (req, res)
 
     // Call digiflazz if enabled
     let sn = 'TRX-' + Date.now();
-    let msg = 'Transaksi pulsa berhasil diproses!';
+    let msg = 'Transaksi berhasil diproses!';
     try {
-      if (agentSvc && agentSvc.buyPulsaAsAgent) {
-        const digiRes = await agentSvc.buyPulsaAsAgent(1, sku, target, { sell_price: price });
-        sn = digiRes?.tx?.digi_sn || sn;
-        msg = digiRes?.tx?.digi_message || msg;
+      if (agentSvc && agentSvc.buyPulsaAsAdmin) {
+        const digiRes = await agentSvc.buyPulsaAsAdmin({
+          sku,
+          target,
+          actorName: `Pelanggan ${customer.name}`,
+          actorPhone: customer.phone
+        });
+        sn = digiRes?.vendor?.sn || digiRes?.tx?.digi_sn || sn;
+        msg = digiRes?.vendor?.message || digiRes?.tx?.digi_message || msg;
+        const status = String(digiRes?.vendor?.status || '').toLowerCase();
+        if (status === 'gagal' || status === 'failed') {
+          // Refund saldo jika ditolak provider
+          db.prepare('UPDATE customers SET balance = balance + ? WHERE id = ?').run(price, customerId);
+          return res.status(400).json({
+            success: false,
+            message: 'Transaksi ditolak provider, saldo otomatis dikembalikan. ' + (msg || '')
+          });
+        }
       }
+    } catch (digiErr) {
+      // Refund saldo jika error
+      db.prepare('UPDATE customers SET balance = balance + ? WHERE id = ?').run(price, customerId);
+      return res.status(500).json({
+        success: false,
+        message: 'Gagal memproses transaksi ke provider: ' + digiErr.message
+      });
+    }
+
+    // Catat ke riwayat
+    try {
+      db.prepare(`
+        INSERT INTO public_ppob_orders (
+          customer_id, buyer_phone, sku, product_name, target, price, status, digi_sn, digi_message, fulfilled_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'fulfilled', ?, ?, (NOW_LOCAL()), (NOW_LOCAL()), (NOW_LOCAL()))
+      `).run(customerId, customer.phone || '', sku, product.product_name, target, price, sn, msg);
     } catch (_) {}
 
     const newBalance = db.prepare('SELECT balance FROM customers WHERE id = ?').get(customerId)?.balance || 0;
+
+    // Kirim notifikasi WA struk jika aktif
+    try {
+      const { getSettings } = require('../config/settingsManager');
+      const settings = getSettings();
+      if (settings.whatsapp_enabled && customer.phone) {
+        const { sendWA, whatsappStatus } = await import('./whatsappBot.mjs');
+        if (whatsappStatus.connection === 'open') {
+          await sendWA(customer.phone,
+            `✅ *TRANSAKSI PPOB BERHASIL*\n\n` +
+            `Halo *${customer.name}*,\n` +
+            `Transaksi pembelian produk digital Anda berhasil diproses:\n\n` +
+            `📦 *Produk:* ${product.product_name}\n` +
+            `🎯 *Tujuan:* ${target}\n` +
+            `💰 *Harga:* Rp ${price.toLocaleString('id-ID')}\n` +
+            (sn ? `🔢 *SN / Token:* \`${sn}\`\n` : '') +
+            `💳 *Sisa Saldo:* Rp ${Number(newBalance).toLocaleString('id-ID')}\n\n` +
+            `Terima kasih telah bertransaksi!`
+          );
+        }
+      }
+    } catch (_) {}
 
     res.json({
       success: true,

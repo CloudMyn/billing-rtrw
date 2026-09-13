@@ -1547,26 +1547,25 @@ app.get(['/terms-of-service', '/terms', '/tos', '/syarat-ketentuan', '/terms.htm
   });
 });
 
-// Route download APK Android Pelanggan
-app.get(['/download/app', '/download/apk', '/downloads/AlijayaCustomer.apk', '/download/AlijayaCustomer.apk'], (req, res) => {
-  const apkPath = path.join(__dirname, 'public', 'downloads', 'AlijayaCustomer.apk');
-  const fallbackPath = path.join(__dirname, 'AlijayaCustomer.apk');
+// Route download APK Android Pelanggan & Admin
+app.get(['/download/app', '/download/apk', '/downloads/billing-rtrw.apk', '/download/billing-rtrw.apk', '/downloads/AlijayaCustomer.apk', '/download/AlijayaCustomer.apk'], (req, res) => {
+  const candidates = [
+    path.join(__dirname, 'public', 'downloads', 'billing-rtrw.apk'),
+    path.join(__dirname, 'billing-rtrw.apk'),
+    path.join(__dirname, 'public', 'downloads', 'AlijayaCustomer.apk'),
+    path.join(__dirname, 'AlijayaCustomer.apk')
+  ];
 
-  let targetPath = null;
-  if (fs.existsSync(apkPath)) {
-    targetPath = apkPath;
-  } else if (fs.existsSync(fallbackPath)) {
-    targetPath = fallbackPath;
-  }
+  const targetPath = candidates.find(p => fs.existsSync(p));
 
   if (targetPath) {
     res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-    return res.download(targetPath, 'AlijayaCustomer.apk');
+    return res.download(targetPath, 'billing-rtrw.apk');
   }
 
   return res.status(404).json({
     success: false,
-    message: 'File APK belum di-upload ke server VPS. Silakan upload file AlijayaCustomer.apk ke folder public/downloads/ di server.'
+    message: 'File APK belum di-upload ke server VPS. Silakan upload file billing-rtrw.apk ke folder public/downloads/ di server.'
   });
 });
 

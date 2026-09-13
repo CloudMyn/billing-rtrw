@@ -71,7 +71,7 @@ object AppUpdateHelper {
                     if (obj != null) {
                         val serverVersionCode = obj.optInt("versionCode", 1)
                         val versionName = obj.optString("versionName", "1.0.0")
-                        val downloadPath = obj.optString("downloadUrl", "/downloads/AlijayaCustomer.apk")
+                        val downloadPath = obj.optString("downloadUrl", "/downloads/billing-rtrw.apk")
                         val releaseNotes = obj.optString("releaseNotes", "Pembaruan versi terbaru.")
 
                         val currentVersionCode = try {
@@ -127,7 +127,7 @@ object AppUpdateHelper {
                         val inputStream = body.byteStream()
 
                         val downloadDir = activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: activity.filesDir
-                        val targetFile = File(downloadDir, "AlijayaCustomer_Update.apk")
+                        val targetFile = File(downloadDir, "billing-rtrw_Update.apk")
                         if (targetFile.exists()) targetFile.delete()
 
                         val outputStream = FileOutputStream(targetFile)

@@ -11,6 +11,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -43,10 +44,16 @@ class CustomerPpobFragment : Fragment() {
 
     private var currentBalance: Double = 0.0
     private var allCatalog = mutableListOf<JSONObject>()
+    private var selectedCategory: String = "ALL" // ALL, Pulsa, Data, PLN, E-Wallet, Games
+    private var detectedBrand: String = ""
+
     private lateinit var tvBalance: TextView
     private lateinit var etPhone: EditText
+    private lateinit var tvTargetLabel: TextView
     private lateinit var tvProvider: TextView
+    private lateinit var etSearch: EditText
     private lateinit var productsContainer: LinearLayout
+    private val chipButtons = mutableMapOf<String, Button>()
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         val swipe = SwipeRefreshLayout(requireContext()).apply { setBackgroundColor(Color.parseColor("#0F172A")) }
@@ -61,10 +68,21 @@ class CustomerPpobFragment : Fragment() {
 
     private fun buildUI(container: LinearLayout) {
         val ctx = requireContext()
-        container.addView(TextView(ctx).apply { text = "📱 Beli Pulsa, Data & Token PLN"; setTextColor(Color.WHITE); textSize = 18f; typeface = Typeface.DEFAULT_BOLD; setPadding(0, 0, 0, 4) })
+        container.addView(TextView(ctx).apply { 
+            text = "📱 Beli Pulsa, Data & Token PLN"
+            setTextColor(Color.WHITE)
+            textSize = 18f
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(0, 0, 0, 4) 
+        })
 
-        // Balance Card
-        val balCard = CardView(ctx).apply { radius = 24f; setCardBackgroundColor(Color.parseColor("#132742")); cardElevation = 4f; layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 16) } }
+        // 1. Balance Card
+        val balCard = CardView(ctx).apply { 
+            radius = 24f
+            setCardBackgroundColor(Color.parseColor("#132742"))
+            cardElevation = 4f
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 16) } 
+        }
         val balInner = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; setPadding(24, 20, 24, 20); gravity = Gravity.CENTER_VERTICAL }
         val balCol = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
         balCol.addView(TextView(ctx).apply { text = "Saldo Dompet Anda"; setTextColor(Color.parseColor("#38BDF8")); textSize = 11.5f; typeface = Typeface.DEFAULT_BOLD })
@@ -73,7 +91,11 @@ class CustomerPpobFragment : Fragment() {
         balInner.addView(balCol)
 
         val btnTopup = Button(ctx).apply {
-            text = "➕ Isi Saldo"; setBackgroundColor(Color.parseColor("#2563EB")); setTextColor(Color.WHITE); textSize = 11.5f; typeface = Typeface.DEFAULT_BOLD
+            text = "➕ Isi Saldo"
+            setBackgroundColor(Color.parseColor("#2563EB"))
+            setTextColor(Color.WHITE)
+            textSize = 11.5f
+            typeface = Typeface.DEFAULT_BOLD
             setOnClickListener {
                 parentFragmentManager.beginTransaction()
                     .replace(R.id.fragment_container, CustomerTopupFragment())
@@ -84,44 +106,144 @@ class CustomerPpobFragment : Fragment() {
         balCard.addView(balInner)
         container.addView(balCard)
 
-        // Input Card
-        val inputCard = CardView(ctx).apply { radius = 24f; setCardBackgroundColor(Color.parseColor("#1E293B")); cardElevation = 4f; layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 16) } }
+        // 2. Category Chips Bar (ALL, Pulsa, Data, PLN, E-Wallet, Games)
+        val chipsScroll = HorizontalScrollView(ctx).apply {
+            isHorizontalScrollBarEnabled = false
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 12) }
+        }
+        val chipsLayout = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+        val categories = listOf(
+            "ALL" to "🌟 Semua",
+            "Pulsa" to "📱 Pulsa",
+            "Data" to "🌐 Paket Data",
+            "PLN" to "⚡ Token PLN",
+            "E-Wallet" to "💳 E-Wallet",
+            "Games" to "🎮 Games"
+        )
+        for ((catKey, catLabel) in categories) {
+            val chip = Button(ctx).apply {
+                text = catLabel
+                textSize = 11f
+                typeface = Typeface.DEFAULT_BOLD
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, 80).apply { setMargins(0, 0, 10, 0) }
+                setOnClickListener {
+                    selectedCategory = catKey
+                    updateCategoryChipsUI()
+                    updateInputHintForCategory()
+                    applyFilter()
+                }
+            }
+            chipButtons[catKey] = chip
+            chipsLayout.addView(chip)
+        }
+        chipsScroll.addView(chipsLayout)
+        container.addView(chipsScroll)
+        updateCategoryChipsUI()
+
+        // 3. Input Target Card
+        val inputCard = CardView(ctx).apply { 
+            radius = 24f
+            setCardBackgroundColor(Color.parseColor("#1E293B"))
+            cardElevation = 4f
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 16) } 
+        }
         val inputInner = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 20, 24, 20) }
 
         val rowLabel = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        rowLabel.addView(TextView(ctx).apply { text = "NOMOR TUJUAN / HP"; setTextColor(Color.parseColor("#38BDF8")); textSize = 11.5f; typeface = Typeface.DEFAULT_BOLD; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) })
+        tvTargetLabel = TextView(ctx).apply { 
+            text = "NOMOR TUJUAN / HP"
+            setTextColor(Color.parseColor("#38BDF8"))
+            textSize = 11.5f
+            typeface = Typeface.DEFAULT_BOLD
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) 
+        }
         tvProvider = TextView(ctx).apply { text = "Pilih Operator"; setTextColor(Color.parseColor("#4ADE80")); textSize = 11.5f; typeface = Typeface.DEFAULT_BOLD }
+        rowLabel.addView(tvTargetLabel)
         rowLabel.addView(tvProvider)
         inputInner.addView(rowLabel)
 
         etPhone = EditText(ctx).apply {
-            hint = "08xxxxxxxxxx"; setTextColor(Color.WHITE); setHintTextColor(Color.parseColor("#64748B")); textSize = 18f; typeface = Typeface.DEFAULT_BOLD
-            background = ContextCompat.getDrawable(ctx, R.drawable.bg_input_field); setPadding(24, 20, 24, 20)
+            hint = "08xxxxxxxxxx"
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.parseColor("#64748B"))
+            textSize = 18f
+            typeface = Typeface.DEFAULT_BOLD
+            background = ContextCompat.getDrawable(ctx, R.drawable.bg_input_field)
+            setPadding(24, 20, 24, 20)
             inputType = android.text.InputType.TYPE_CLASS_PHONE
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 8, 0, 4) }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 8, 0, 8) }
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                     val p = detectProvider(s.toString().trim())
+                    detectedBrand = p
                     tvProvider.text = if (p.isNotEmpty()) "📡 $p" else "Deteksi Otomatis..."
-                    filterProducts(p)
+                    applyFilter()
                 }
                 override fun afterTextChanged(s: Editable?) {}
             })
         }
         inputInner.addView(etPhone)
+
+        // Search Field
+        etSearch = EditText(ctx).apply {
+            hint = "🔍 Cari nominal / produk (misal: 100rb, 10gb, token)..."
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.parseColor("#64748B"))
+            textSize = 13f
+            background = ContextCompat.getDrawable(ctx, R.drawable.bg_input_field)
+            setPadding(20, 14, 20, 14)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 4, 0, 0) }
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    applyFilter()
+                }
+                override fun afterTextChanged(s: Editable?) {}
+            })
+        }
+        inputInner.addView(etSearch)
         inputCard.addView(inputInner)
         container.addView(inputCard)
 
-        // Products Container
-        container.addView(TextView(ctx).apply { text = "PILIH NOMINAL PRODUK"; setTextColor(Color.parseColor("#94A3B8")); textSize = 11.5f; typeface = Typeface.DEFAULT_BOLD; setPadding(0, 8, 0, 8) })
+        // 4. Products Container
+        container.addView(TextView(ctx).apply { 
+            text = "PILIH NOMINAL / PRODUK"; setTextColor(Color.parseColor("#94A3B8")); textSize = 11.5f; typeface = Typeface.DEFAULT_BOLD; setPadding(0, 4, 0, 8) 
+        })
         productsContainer = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
         container.addView(productsContainer)
     }
 
+    private fun updateCategoryChipsUI() {
+        for ((catKey, btn) in chipButtons) {
+            val isSelected = (catKey == selectedCategory)
+            btn.setBackgroundColor(if (isSelected) Color.parseColor("#2563EB") else Color.parseColor("#1E293B"))
+            btn.setTextColor(if (isSelected) Color.WHITE else Color.parseColor("#94A3B8"))
+        }
+    }
+
+    private fun updateInputHintForCategory() {
+        if (selectedCategory == "PLN") {
+            tvTargetLabel.text = "NOMOR METER / ID PELANGGAN PLN"
+            etPhone.hint = "Nomor Meter / ID PLN (11-12 digit)"
+            tvProvider.text = "⚡ PLN Prabayar"
+        } else {
+            tvTargetLabel.text = "NOMOR TUJUAN / HP"
+            etPhone.hint = "08xxxxxxxxxx"
+            tvProvider.text = if (detectedBrand.isNotEmpty()) "📡 $detectedBrand" else "Deteksi Otomatis..."
+        }
+    }
+
     private fun detectProvider(phone: String): String {
-        val clean = phone.replace("+62", "0").replace("-", "").trim()
+        val clean = phone.replace("+62", "0").replace(Regex("[^0-9]"), "").trim()
         if (clean.length < 4) return ""
+
+        // PLN Detection: 10-12 digits starting with common PLN prefixes
+        if (clean.length >= 10 && (clean.startsWith("14") || clean.startsWith("22") || clean.startsWith("32") ||
+                    clean.startsWith("56") || clean.startsWith("01") || clean.startsWith("86") || clean.startsWith("53"))) {
+            return "PLN"
+        }
+
         val prefix = clean.take(4)
         return when (prefix) {
             "0811", "0812", "0813", "0821", "0822", "0823", "0851", "0852", "0853" -> "Telkomsel"
@@ -155,38 +277,100 @@ class CustomerPpobFragment : Fragment() {
             currentBalance = balJson?.optJSONObject("data")?.optDouble("balance", 0.0) ?: 0.0
             tvBalance.text = fmt.format(currentBalance)
 
-            val arr = catJson?.optJSONArray("data") ?: JSONArray()
-            allCatalog.clear()
-            for (i in 0 until arr.length()) allCatalog.add(arr.getJSONObject(i))
+            // Flexible array extraction: data as Array, or data.products, or products
+            val arr = catJson?.optJSONArray("data")
+                ?: catJson?.optJSONObject("data")?.optJSONArray("products")
+                ?: catJson?.optJSONArray("products")
+                ?: JSONArray()
 
-            filterProducts(detectProvider(etPhone.text.toString().trim()))
+            allCatalog.clear()
+            for (i in 0 until arr.length()) {
+                allCatalog.add(arr.getJSONObject(i))
+            }
+
+            applyFilter()
         }
     }
 
-    private fun filterProducts(provider: String) {
+    private fun applyFilter() {
         val ctx = context ?: return
         productsContainer.removeAllViews()
 
-        val filtered = if (provider.isNotEmpty()) {
-            allCatalog.filter { it.optString("brand", "").contains(provider, ignoreCase = true) }
-        } else {
-            allCatalog.take(15)
+        val query = etSearch.text.toString().trim().lowercase()
+        val provider = detectedBrand
+
+        var list = allCatalog.asSequence()
+
+        // Filter Category Chip
+        if (selectedCategory != "ALL") {
+            list = when (selectedCategory) {
+                "PLN" -> list.filter { 
+                    it.optString("category", "").equals("PLN", ignoreCase = true) || 
+                    it.optString("brand", "").equals("PLN", ignoreCase = true) ||
+                    it.optString("product_name", "").contains("PLN", ignoreCase = true)
+                }
+                "Pulsa" -> list.filter { it.optString("category", "").equals("Pulsa", ignoreCase = true) }
+                "Data" -> list.filter { 
+                    it.optString("category", "").equals("Data", ignoreCase = true) || 
+                    it.optString("product_name", "").contains("GB", ignoreCase = true) 
+                }
+                "E-Wallet" -> list.filter { 
+                    it.optString("category", "").equals("E-Wallet", ignoreCase = true) ||
+                    listOf("dana", "ovo", "gopay", "shopee", "linkaja").any { w -> it.optString("brand", "").lowercase().contains(w) }
+                }
+                "Games" -> list.filter { it.optString("category", "").contains("Game", ignoreCase = true) }
+                else -> list
+            }
         }
+
+        // Filter Detected Provider / Brand (if phone number is typed)
+        if (provider.isNotEmpty() && selectedCategory != "PLN" && provider != "PLN") {
+            list = list.filter { 
+                it.optString("brand", "").contains(provider, ignoreCase = true) ||
+                it.optString("product_name", "").contains(provider, ignoreCase = true)
+            }
+        } else if (provider == "PLN" || selectedCategory == "PLN") {
+            list = list.filter {
+                it.optString("category", "").equals("PLN", ignoreCase = true) || 
+                it.optString("brand", "").equals("PLN", ignoreCase = true) ||
+                it.optString("product_name", "").contains("PLN", ignoreCase = true)
+            }
+        }
+
+        // Filter Search Text
+        if (query.isNotEmpty()) {
+            list = list.filter {
+                it.optString("product_name", "").lowercase().contains(query) ||
+                it.optString("sku", "").lowercase().contains(query) ||
+                it.optString("brand", "").lowercase().contains(query)
+            }
+        }
+
+        val filtered = list.toList()
 
         if (filtered.isEmpty()) {
             productsContainer.addView(TextView(ctx).apply {
-                text = if (provider.isNotEmpty()) "Belum ada produk untuk operator $provider" else "Ketik nomor telepon untuk menampilkan pilihan nominal pulsa"
-                setTextColor(Color.parseColor("#94A3B8")); textSize = 13f; gravity = Gravity.CENTER; setPadding(0, 40, 0, 40)
+                text = if (provider.isNotEmpty()) "Belum ada produk untuk $provider" else "Tidak ada produk yang sesuai kriteria pencarian"
+                setTextColor(Color.parseColor("#94A3B8"))
+                textSize = 13f
+                gravity = Gravity.CENTER
+                setPadding(0, 40, 0, 40)
             })
             return
         }
 
-        for (item in filtered) {
+        // Sort by price
+        val sorted = filtered.sortedBy { it.optDouble("price_sell", it.optDouble("price", 0.0)) }
+
+        for (item in sorted) {
             val price = item.optDouble("price_sell", item.optDouble("price", 0.0))
             val card = CardView(ctx).apply {
-                radius = 20f; setCardBackgroundColor(Color.parseColor("#1E293B")); cardElevation = 3f
+                radius = 20f
+                setCardBackgroundColor(Color.parseColor("#1E293B"))
+                cardElevation = 3f
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 10) }
-                isClickable = true; isFocusable = true
+                isClickable = true
+                isFocusable = true
             }
             val inner = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; setPadding(20, 16, 20, 16); gravity = Gravity.CENTER_VERTICAL }
             val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
@@ -203,7 +387,10 @@ class CustomerPpobFragment : Fragment() {
     private fun confirmPurchase(item: JSONObject) {
         val ctx = context ?: return
         val target = etPhone.text.toString().trim()
-        if (target.length < 9) { Toast.makeText(ctx, "Masukkan nomor telepon tujuan yang valid terlebih dahulu", Toast.LENGTH_SHORT).show(); return }
+        if (target.length < 9) { 
+            Toast.makeText(ctx, "Masukkan nomor telepon / nomor meter PLN tujuan yang valid terlebih dahulu", Toast.LENGTH_SHORT).show()
+            return 
+        }
 
         val prodName = item.optString("product_name")
         val sku = item.optString("sku")
@@ -211,7 +398,7 @@ class CustomerPpobFragment : Fragment() {
 
         AlertDialog.Builder(ctx)
             .setTitle("Konfirmasi Pembelian")
-            .setMessage("Beli $prodName\nNomor: $target\nHarga: ${fmt.format(price)}\n\nSaldo Anda saat ini: ${fmt.format(currentBalance)}")
+            .setMessage("Beli: $prodName\nNomor Tujuan: $target\nHarga: ${fmt.format(price)}\n\nSaldo Anda saat ini: ${fmt.format(currentBalance)}")
             .setPositiveButton("Beli Sekarang") { _, _ ->
                 doPurchase(sku, target)
             }
@@ -221,6 +408,7 @@ class CustomerPpobFragment : Fragment() {
 
     private fun doPurchase(sku: String, target: String) {
         val ctx = context ?: return
+        Toast.makeText(ctx, "Memproses transaksi...", Toast.LENGTH_SHORT).show()
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
                 try {

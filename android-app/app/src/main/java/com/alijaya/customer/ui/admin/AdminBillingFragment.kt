@@ -5,7 +5,11 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.CheckBox
+import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -238,6 +242,7 @@ class AdminBillingFragment : Fragment() {
             val status = c.optString("status", "active").lowercase()
             val pkgName = c.optString("package_name", "Paket Internet")
             val pkgPrice = c.optDouble("package_price", 0.0)
+            val balance = c.optDouble("balance", 0.0)
             val unpaidCount = c.optInt("unpaid_count", 0)
             val unpaidInvId = c.optInt("latest_unpaid_invoice_id", 0)
             val unpaidAmt = c.optDouble("latest_unpaid_amount", pkgPrice)
@@ -300,7 +305,7 @@ class AdminBillingFragment : Fragment() {
 
             // Info rows
             val tvDetails = TextView(ctx).apply {
-                text = "\uD83D\uDC64 PPPoE: $pppoe | \uD83D\uDCF1 WA: $phone\n\uD83D\uDCE6 Paket: $pkgName (${fmt.format(pkgPrice)})\n" +
+                text = "\uD83D\uDC64 PPPoE: $pppoe | \uD83D\uDCF1 WA: $phone\n\uD83D\uDCE6 Paket: $pkgName (${fmt.format(pkgPrice)}) | \uD83D\uDCB0 Saldo: ${fmt.format(balance)}\n" +
                         if (unpaidCount > 0) "\u26A0\uFE0F Tunggakan: $unpaidCount bln (#INV-$unpaidInvId: ${fmt.format(unpaidAmt)})"
                         else "\u2705 Tagihan LUNAS"
                 setTextColor(ContextCompat.getColor(ctx, if (unpaidCount > 0) R.color.warning else R.color.text_muted))
@@ -317,7 +322,7 @@ class AdminBillingFragment : Fragment() {
             // 1. Bayar Button
             if (unpaidCount > 0 && unpaidInvId > 0) {
                 val btnPay = Button(ctx, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-                    layoutParams = LinearLayout.LayoutParams(0, 84, 1f).apply { marginEnd = 8 }
+                    layoutParams = LinearLayout.LayoutParams(0, 84, 1f).apply { marginEnd = 6 }
                     text = "\uD83D\uDCB3 Bayar"
                     textSize = 10.5f
                     setTextColor(ContextCompat.getColor(ctx, R.color.success))
@@ -328,10 +333,22 @@ class AdminBillingFragment : Fragment() {
                 btnRow.addView(btnPay)
             }
 
-            // 2. Isolir Button
+            // 2. Saldo Button
+            val btnTopup = Button(ctx, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                layoutParams = LinearLayout.LayoutParams(0, 84, 1f).apply { marginEnd = 6 }
+                text = "💰 Saldo"
+                textSize = 10.5f
+                setTextColor(ContextCompat.getColor(ctx, R.color.accent))
+                setOnClickListener {
+                    showCustomerTopupDialog(cId, name, balance)
+                }
+            }
+            btnRow.addView(btnTopup)
+
+            // 3. Isolir Button
             if (status != "suspended" && status != "isolated") {
                 val btnIsolate = Button(ctx, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-                    layoutParams = LinearLayout.LayoutParams(0, 84, 1f).apply { marginEnd = 8 }
+                    layoutParams = LinearLayout.LayoutParams(0, 84, 1f).apply { marginEnd = 6 }
                     text = "\uD83D\uDD12 Isolir"
                     textSize = 10.5f
                     setTextColor(ContextCompat.getColor(ctx, R.color.danger))
@@ -342,12 +359,12 @@ class AdminBillingFragment : Fragment() {
                 btnRow.addView(btnIsolate)
             }
 
-            // 3. Buka Isolir (Ditangguhkan) Button
+            // 4. Buka Isolir (Ditangguhkan) Button
             val btnDefer = Button(ctx, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-                layoutParams = LinearLayout.LayoutParams(0, 84, 1.2f)
+                layoutParams = LinearLayout.LayoutParams(0, 84, 1.1f)
                 text = "\uD83D\uDD13 Tangguhkan"
                 textSize = 10.5f
-                setTextColor(ContextCompat.getColor(ctx, R.color.accent))
+                setTextColor(ContextCompat.getColor(ctx, R.color.warning))
                 setOnClickListener {
                     confirmUnisolateAndDefer(cId, name)
                 }
@@ -667,6 +684,196 @@ class AdminBillingFragment : Fragment() {
                 loadCustomers(binding.etSearch.text.toString().trim())
             } else {
                 Toast.makeText(ctx, "Gagal membuka isolir pelanggan", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun showCustomerTopupDialog(customerId: Int, customerName: String, currentBalance: Double) {
+        val ctx = context ?: return
+        val fmt = NumberFormat.getCurrencyInstance(Locale("id", "ID"))
+
+        val layout = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 16)
+        }
+
+        val tvInfo = TextView(ctx).apply {
+            text = "Pelanggan: $customerName\nSaldo Saat Ini: ${fmt.format(currentBalance)}"
+            setTextColor(ContextCompat.getColor(ctx, R.color.text_white))
+            textSize = 13.5f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setPadding(0, 0, 0, 16)
+        }
+        layout.addView(tvInfo)
+
+        // Radio Group: Tambah (+) vs Potong (-)
+        val rgAction = RadioGroup(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 0, 0, 16)
+        }
+        val rbAdd = RadioButton(ctx).apply {
+            text = "➕ Tambah Saldo"
+            setTextColor(ContextCompat.getColor(ctx, R.color.text_white))
+            textSize = 12f
+            isChecked = true
+        }
+        val rbDeduct = RadioButton(ctx).apply {
+            text = "➖ Potong Saldo"
+            setTextColor(ContextCompat.getColor(ctx, R.color.text_white))
+            textSize = 12f
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = 24 }
+        }
+        rgAction.addView(rbAdd)
+        rgAction.addView(rbDeduct)
+        layout.addView(rgAction)
+
+        val tvLabelAmount = TextView(ctx).apply {
+            text = "Nominal (Rp):"
+            setTextColor(ContextCompat.getColor(ctx, R.color.accent))
+            textSize = 12f
+            setPadding(0, 0, 0, 6)
+        }
+        layout.addView(tvLabelAmount)
+
+        val etAmount = EditText(ctx).apply {
+            hint = "Contoh: 50000"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setTextColor(ContextCompat.getColor(ctx, R.color.text_white))
+            setHintTextColor(ContextCompat.getColor(ctx, R.color.text_muted))
+            textSize = 15f
+            background = ContextCompat.getDrawable(ctx, R.drawable.bg_input_field)
+            setPadding(24, 20, 24, 20)
+        }
+        layout.addView(etAmount)
+
+        // Quick amount preset chips
+        val quickAmounts = listOf(10000, 20000, 50000, 100000, 200000, 500000)
+        val chipsRow1 = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 12, 0, 6)
+        }
+        for (amt in quickAmounts.take(3)) {
+            val btnChip = Button(ctx, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                layoutParams = LinearLayout.LayoutParams(0, 75, 1f).apply { marginEnd = 6 }
+                text = "${amt / 1000}k"
+                textSize = 11f
+                setTextColor(ContextCompat.getColor(ctx, R.color.accent))
+                setOnClickListener { etAmount.setText(amt.toString()) }
+            }
+            chipsRow1.addView(btnChip)
+        }
+        layout.addView(chipsRow1)
+
+        val chipsRow2 = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 0, 0, 14)
+        }
+        for (amt in quickAmounts.drop(3)) {
+            val btnChip = Button(ctx, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                layoutParams = LinearLayout.LayoutParams(0, 75, 1f).apply { marginEnd = 6 }
+                text = "${amt / 1000}k"
+                textSize = 11f
+                setTextColor(ContextCompat.getColor(ctx, R.color.accent))
+                setOnClickListener { etAmount.setText(amt.toString()) }
+            }
+            chipsRow2.addView(btnChip)
+        }
+        layout.addView(chipsRow2)
+
+        val tvLabelNote = TextView(ctx).apply {
+            text = "Keterangan / Catatan:"
+            setTextColor(ContextCompat.getColor(ctx, R.color.accent))
+            textSize = 12f
+            setPadding(0, 0, 0, 6)
+        }
+        layout.addView(tvLabelNote)
+
+        val etNote = EditText(ctx).apply {
+            hint = "Cth: Deposit Tunai di Loket"
+            setTextColor(ContextCompat.getColor(ctx, R.color.text_white))
+            setHintTextColor(ContextCompat.getColor(ctx, R.color.text_muted))
+            textSize = 13.5f
+            background = ContextCompat.getDrawable(ctx, R.drawable.bg_input_field)
+            setPadding(24, 20, 24, 20)
+        }
+        layout.addView(etNote)
+
+        val cbWa = CheckBox(ctx).apply {
+            text = "Kirim Notifikasi WhatsApp ke Pelanggan"
+            setTextColor(ContextCompat.getColor(ctx, R.color.text_white))
+            textSize = 12f
+            isChecked = true
+            setPadding(8, 12, 0, 0)
+        }
+        layout.addView(cbWa)
+
+        AlertDialog.Builder(ctx)
+            .setTitle("💰 Kelola Saldo Pelanggan")
+            .setView(layout)
+            .setPositiveButton("Simpan Transaksi") { _, _ ->
+                val amountStr = etAmount.text.toString().trim()
+                val amount = amountStr.toDoubleOrNull() ?: 0.0
+                if (amount <= 0) {
+                    Toast.makeText(ctx, "Nominal tidak valid!", Toast.LENGTH_SHORT).show()
+                } else {
+                    val actionType = if (rbDeduct.isChecked) "deduct" else "add"
+                    val note = etNote.text.toString().trim().ifEmpty {
+                        if (actionType == "deduct") "Koreksi Saldo Manual" else "Setoran Tunai Manual"
+                    }
+                    val sendWa = cbWa.isChecked
+                    processCustomerTopup(customerId, amount, actionType, note, sendWa, customerName)
+                }
+            }
+            .setNegativeButton("Batal", null)
+            .show()
+    }
+
+    private fun processCustomerTopup(
+        customerId: Int,
+        amount: Double,
+        actionType: String,
+        note: String,
+        sendWhatsApp: Boolean,
+        customerName: String
+    ) {
+        val ctx = context ?: return
+        Toast.makeText(ctx, "Memproses update saldo...", Toast.LENGTH_SHORT).show()
+
+        lifecycleScope.launch {
+            val url = "${getBaseUrl()}/api/customer/app/admin/customers/topup"
+            val bodyJson = JSONObject().apply {
+                put("customerId", customerId)
+                put("amount", amount)
+                put("actionType", actionType)
+                put("note", note)
+                put("sendWhatsApp", sendWhatsApp)
+            }.toString()
+
+            val (success, message) = withContext(Dispatchers.IO) {
+                try {
+                    val reqBody = bodyJson.toRequestBody("application/json".toMediaType())
+                    val req = Request.Builder().url(url)
+                        .addHeader("Authorization", "Bearer ${getToken()}")
+                        .post(reqBody).build()
+                    val resp = httpClient().newCall(req).execute()
+                    val respStr = resp.body?.string() ?: ""
+                    val json = if (respStr.isNotEmpty()) JSONObject(respStr) else JSONObject()
+                    val ok = resp.isSuccessful && json.optBoolean("success", false)
+                    val msg = json.optString("message", if (ok) "Berhasil" else "Gagal memperbarui saldo")
+                    Pair(ok, msg)
+                } catch (e: Exception) {
+                    Pair(false, e.message ?: "Koneksi gagal")
+                }
+            }
+
+            if (success) {
+                Toast.makeText(ctx, "✅ $message", Toast.LENGTH_LONG).show()
+                loadCustomers(binding.etSearch.text.toString().trim())
+            } else {
+                Toast.makeText(ctx, "❌ $message", Toast.LENGTH_LONG).show()
             }
         }
     }
