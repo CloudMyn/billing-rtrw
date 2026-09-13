@@ -1535,6 +1535,18 @@ app.get(['/privacy-policy', '/privacy', '/kebijakan-privasi', '/privacy.html'], 
   });
 });
 
+// Route: Syarat & Ketentuan (Terms of Service / TOS) untuk Google Play Store & Pelanggan
+app.get(['/terms-of-service', '/terms', '/tos', '/syarat-ketentuan', '/terms.html'], (req, res) => {
+  const { getSetting, getSettings } = require('./config/settingsManager');
+  const company = getSetting('company_header', 'ALIJAYA NET');
+  const settings = getSettings ? getSettings() : {};
+  res.render('tos', {
+    company,
+    settings,
+    isLoggedIn: false
+  });
+});
+
 // Route download APK Android Pelanggan
 app.get(['/download/app', '/download/apk', '/downloads/AlijayaCustomer.apk', '/download/AlijayaCustomer.apk'], (req, res) => {
   const apkPath = path.join(__dirname, 'public', 'downloads', 'AlijayaCustomer.apk');
