@@ -2305,6 +2305,39 @@ router.post('/app/admin/agents/topup', requireAdminApiAuth, (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+router.post('/app/admin/customers/topup', requireAdminApiAuth, async (req, res) => {
+  try {
+    const { customerId, amount, actionType, note, sendWhatsApp } = req.body;
+    const cid = Number(customerId);
+    const amt = Number(amount);
+    const action = actionType === 'deduct' ? 'deduct' : 'add';
+    const actorName = req.admin?.name || req.admin?.username || (req.admin?.role === 'cashier' ? 'Kasir' : 'Admin');
+    const sendWa = sendWhatsApp !== false && sendWhatsApp !== 'false';
+
+    if (!cid || !amt || amt <= 0) {
+      return res.status(400).json({ success: false, message: 'ID Pelanggan dan nominal valid wajib diisi.' });
+    }
+
+    const result = await customerSvc.topupCustomerBalance(cid, amt, note, actorName, action, sendWa);
+    const actionText = action === 'deduct' ? 'dipotong' : 'ditambahkan';
+
+    res.json({
+      success: true,
+      message: `Saldo pelanggan "${result.customer?.name || ''}" berhasil ${actionText} Rp ${amt.toLocaleString('id-ID')}. Sisa saldo: Rp ${result.after.toLocaleString('id-ID')}`,
+      data: {
+        customerId: cid,
+        customerName: result.customer?.name,
+        before: result.before,
+        after: result.after,
+        delta: result.delta,
+        actionType: action
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 // ─── ADMIN NATIVE: APPROVAL PEMBAYARAN KOLEKTOR ─────────────────────────────
 router.get('/app/admin/collector-payments', requireAdminApiAuth, (req, res) => {
   try {

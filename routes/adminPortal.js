@@ -2136,6 +2136,32 @@ router.post('/customers/:id/delete', requireAdminSession, async (req, res) => {
   res.redirect('/admin/customers');
 });
 
+router.post('/customers/:id/topup', requireAdminSession, async (req, res) => {
+  try {
+    const custId = Number(req.params.id);
+    const amount = Number(req.body.amount);
+    const actionType = req.body.action_type === 'deduct' ? 'deduct' : 'add';
+    const note = req.body.note ? String(req.body.note).trim() : '';
+    const sendWhatsApp = req.body.send_wa === 'on' || req.body.send_wa === 'true' || req.body.send_wa === true;
+    const actorName = req.session?.isCashier ? resolvePaidByName(req, 'Kasir') : (req.session.adminUser || 'Admin');
+
+    if (!custId || isNaN(amount) || amount <= 0) {
+      throw new Error('Nominal saldo harus lebih dari 0.');
+    }
+
+    const result = await customerSvc.topupCustomerBalance(custId, amount, note, actorName, actionType, sendWhatsApp);
+    const actionText = actionType === 'deduct' ? 'dipotong' : 'ditambahkan';
+    req.session._msg = {
+      type: 'success',
+      text: `Saldo pelanggan ${result.customer?.name || ''} berhasil ${actionText} Rp ${amount.toLocaleString('id-ID')}. Sisa saldo: Rp ${result.after.toLocaleString('id-ID')}`
+    };
+  } catch (e) {
+    req.session._msg = { type: 'error', text: 'Gagal kelola saldo: ' + e.message };
+  }
+  res.redirect('/admin/customers');
+});
+
+
 router.post('/customers/:id/disconnect', requireAdminSession, async (req, res) => {
   try {
     const custId = Number(req.params.id);
