@@ -60,6 +60,13 @@ class HomeFragment : Fragment() {
             startActivity(intent)
         }
 
+        binding.btnIsolationQuickQris.setOnClickListener {
+            val intent = Intent(context, PaymentActivity::class.java).apply {
+                putExtra("invoice_id", latestUnpaidInvoiceId)
+            }
+            startActivity(intent)
+        }
+
         // Separate action 1: Change SSID Only
         binding.cardChangeSsid.setOnClickListener {
             showChangeSsidDialog()
@@ -339,13 +346,28 @@ class HomeFragment : Fragment() {
                         binding.tvUnpaidCount.text = data.billing.unpaidCount.toString() + " Tagihan Belum Dibayar"
                         binding.tvTotalUnpaid.text = fmt.format(data.billing.totalUnpaidAmount)
 
-                        if (data.billing.unpaidCount > 0) {
-                            binding.btnQuickPay.visibility = View.VISIBLE
+                        val isIsolated = data.profile.status != "active"
+                        val hasUnpaid = data.billing.unpaidCount > 0
+
+                        if (hasUnpaid) {
                             latestUnpaidInvoiceId = data.billing.latestUnpaidInvoice?.id ?: 0
+                            binding.btnQuickPay.visibility = View.VISIBLE
                         } else {
                             binding.btnQuickPay.visibility = View.GONE
                             binding.tvTotalUnpaid.setTextColor(ContextCompat.getColor(requireContext(), R.color.success))
                             binding.tvTotalUnpaid.text = "Rp 0 (Lunas)"
+                        }
+
+                        if (isIsolated) {
+                            binding.cardIsolationAlert.visibility = View.VISIBLE
+                            binding.tvIsolationTitle.text = "🚨 STATUS LAYANAN: TERISOLIR"
+                            binding.tvIsolationMessage.text = "Koneksi internet dinonaktifkan sementara karena tagihan belum dilunasi. Segera bayar via QRIS untuk membuka isolir secara instan."
+                        } else if (hasUnpaid) {
+                            binding.cardIsolationAlert.visibility = View.VISIBLE
+                            binding.tvIsolationTitle.text = "⚠️ PERINGATAN TAGIHAN JATUH TEMPO"
+                            binding.tvIsolationMessage.text = "Anda memiliki ${data.billing.unpaidCount} tagihan belum dibayar. Bayar sekarang via QRIS agar internet Anda tetap lancar."
+                        } else {
+                            binding.cardIsolationAlert.visibility = View.GONE
                         }
 
                         if (data.ont != null) {
@@ -414,6 +436,7 @@ class HomeFragment : Fragment() {
         binding.tvTotalUnpaid.text = fmt.format(0.0)
         binding.tvUnpaidCount.text = "0 Tagihan Belum Dibayar"
         binding.btnQuickPay.visibility = View.GONE
+        binding.cardIsolationAlert.visibility = View.GONE
         latestUnpaidInvoiceId = 0
 
         // Nonaktifkan TR-069 saat fallback / offline

@@ -222,15 +222,50 @@
                     </FrameLayout>
                 </androidx.cardview.widget.CardView>
 
-                <Button
-                    android:id="@+id/btn_enlarge_qris"
-                    style="@style/Widget.Material3.Button.TonalButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="40dp"
-                    android:layout_marginTop="10dp"
-                    android:text=" Perbesar Layar Penuh"
-                    android:textColor="@color/text_white"
-                    android:textSize="12sp" />
+                <!-- Action Buttons: Save to Gallery, Copy Nominal, Enlarge -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:gravity="center"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/btn_save_qris_gallery"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:layout_marginEnd="4dp"
+                        android:text="📥 Simpan QR"
+                        android:textColor="@color/accent"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+
+                    <Button
+                        android:id="@+id/btn_copy_nominal"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:layout_marginHorizontal="4dp"
+                        android:text="📋 Salin Rp"
+                        android:textColor="@color/warning"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+
+                    <Button
+                        android:id="@+id/btn_enlarge_qris"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="4dp"
+                        android:text="🔍 Perbesar"
+                        android:textColor="@color/text_white"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
 
                 <!-- High-contrast warning alert -->
                 <LinearLayout
@@ -244,7 +279,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text=" "
+                        android:text="⚠️ "
                         android:textSize="16sp" />
 
                     <TextView
@@ -261,7 +296,7 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- Keterangan Lainnya &amp; Pembayaran Manual -->
+        <!-- Keterangan Lainnya & Pembayaran Manual -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -278,7 +313,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text=" PETUNJUK PEMBAYARAN LAINNYA"
+                    android:text="💡 CARA PEMBAYARAN MUDAH"
                     android:textColor="@color/text_white"
                     android:textSize="13sp"
                     android:textStyle="bold" />
@@ -288,12 +323,38 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:text=" Pembayaran Tunai: Dapat dibayarkan langsung di Kasir Kantor atau Agen Resmi.
- Pembayaran Transfer Manual: Harap simpan bukti transfer lalu tekan tombol Konfirmasi WhatsApp di bawah ini."
+                    android:text="1. Klik tombol '📥 Simpan QR' di atas untuk menyimpan barcode ke galeri HP Anda.\n2. Buka aplikasi m-Banking (BCA, Livin Mandiri, BRImo, BNI) atau e-Wallet (DANA, GoPay, OVO, ShopeePay).\n3. Pilih menu Bayar / QRIS, lalu klik ikon 'Galeri Foto' dan pilih gambar barcode yang baru disimpan.\n4. Sistem akan otomatis memverifikasi pelunasan dalam hitungan detik!"
                     android:textColor="@color/text_muted"
                     android:textSize="12sp" />
             </LinearLayout>
         </androidx.cardview.widget.CardView>
+
+        <!-- Real-time Polling Status Banner -->
+        <LinearLayout
+            android:id="@+id/layout_polling_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:background="#064E3B"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:padding="10dp">
+
+            <ProgressBar
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:indeterminateTint="#34D399" />
+
+            <TextView
+                android:id="@+id/tv_polling_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="Memantau pembayaran otomatis (real-time)..."
+                android:textColor="#D1FAE5"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
         <!-- Action Buttons -->
         <Button
@@ -301,8 +362,8 @@
             style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="match_parent"
             android:layout_height="52dp"
-            android:layout_marginTop="16dp"
-            android:text=" Cek Status Pembayaran (Real-time)"
+            android:layout_marginTop="10dp"
+            android:text="🔄 Periksa Status Sekarang"
             android:textColor="@color/text_white"
             android:textSize="14sp"
             android:textStyle="bold" />
@@ -313,7 +374,7 @@
             android:layout_width="match_parent"
             android:layout_height="50dp"
             android:layout_marginTop="8dp"
-            android:text=" Konfirmasi Pembayaran ke WhatsApp Admin"
+            android:text="💬 Konfirmasi Pembayaran ke WhatsApp Admin"
             android:textColor="@color/success"
             android:textSize="13sp"
             android:textStyle="bold" />

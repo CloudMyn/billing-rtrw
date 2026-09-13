@@ -4534,7 +4534,115 @@ function ensureCustomerApiInvoiceQrisUnique(inv) {
   return { uniqueCode: chosenCode || 0, amountUnique: chosenAmount || baseAmount };
 }
 
-router.get('/invoices/:id', requireCustomerApiAuth, (req, res) => {
+// Middleware: Customer Auth or Public Invoice Token
+function requireCustomerOrPublicInvoiceAuth(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
+    const token = authHeader.substring(7).trim();
+    const payload = verifyApiToken(token);
+    if (payload && payload.role === 'customer') {
+      req.customer = payload;
+      return next();
+    }
+  }
+
+  const pubToken = req.query.token || req.query.t || req.headers['x-invoice-token'];
+  if (pubToken) {
+    const settings = getSettingsWithCache();
+    const tokenUtil = require('../utils/tokenUtil');
+    const p = tokenUtil.verifyPublicToken(pubToken, settings.session_secret);
+    if (p && Number(p.invoiceId) === Number(req.params.id)) {
+      req.publicInvoiceAuth = p;
+      return next();
+    }
+  }
+
+  return res.status(401).json({ success: false, message: 'Autentikasi atau token tagihan diperlukan.' });
+}
+
+// GET /api/customer/public-check-bill?q=08...
+// Pencarian tagihan cepat dari APK tanpa harus login (berdasarkan No. HP, Username PPPoE, atau ID)
+router.get('/public-check-bill', (req, res) => {
+  const qStr = String(req.query.q || '').trim();
+  if (!qStr) {
+    return res.status(400).json({ success: false, message: 'Nomor HP atau ID Pelanggan harus diisi.' });
+  }
+
+  const cleanPhone = qStr.replace(/[^0-9]/g, '');
+  const cust = db.prepare(`
+    SELECT c.id, c.name, c.phone, c.pppoe_username, c.status, c.address, p.name as package_name, p.price as package_price
+    FROM customers c
+    LEFT JOIN packages p ON p.id = c.package_id
+    WHERE c.phone = ? OR c.phone = ? OR c.pppoe_username = ? OR c.id = ?
+  `).get(cleanPhone, qStr, qStr, Number(qStr) || 0);
+
+  if (!cust) {
+    return res.status(404).json({ success: false, message: 'Data pelanggan tidak ditemukan. Periksa kembali nomor HP atau ID yang dimasukkan.' });
+  }
+
+  const unpaidInvoices = db.prepare(`
+    SELECT id, period_month, period_year, amount, status, qris_unique_code, qris_amount_unique
+    FROM invoices
+    WHERE customer_id = ? AND status != 'paid'
+    ORDER BY id DESC
+  `).all(cust.id);
+
+  const settings = getSettingsWithCache();
+  const tokenUtil = require('../utils/tokenUtil');
+
+  const list = unpaidInvoices.map(inv => {
+    const qrisInfo = ensureCustomerApiInvoiceQrisUnique(inv);
+    const pubToken = tokenUtil.signPublicToken({
+      invoiceId: inv.id,
+      customerId: cust.id,
+      lookup: qStr,
+      exp: Date.now() + 60 * 60 * 1000 // 1 jam
+    }, settings.session_secret);
+
+    let rawPayload = String(settings.qris_static_payload || '').trim();
+    let qrisPayload = '';
+    const totalAmt = qrisInfo.amountUnique || Number(inv.amount || 0);
+    if (rawPayload) {
+      try {
+        qrisPayload = qrisUtil.convertStaticQrisToDynamic(rawPayload, totalAmt);
+      } catch (e) {
+        qrisPayload = rawPayload;
+      }
+    }
+
+    return {
+      id: inv.id,
+      invoiceNo: `#INV-${inv.id}`,
+      periodMonth: inv.period_month,
+      periodYear: inv.period_year,
+      baseAmount: Number(inv.amount || 0),
+      uniqueCode: qrisInfo.uniqueCode,
+      totalAmount: totalAmt,
+      qrisPayload: qrisPayload,
+      qrisImageEndpoint: `/api/customer/invoices/${inv.id}/qris-image`,
+      publicToken: pubToken,
+      status: inv.status
+    };
+  });
+
+  res.json({
+    success: true,
+    data: {
+      customer: {
+        id: cust.id,
+        name: cust.name,
+        phone: cust.phone,
+        status: cust.status,
+        packageName: cust.package_name || 'Paket Internet Home'
+      },
+      unpaidCount: list.length,
+      totalUnpaid: list.reduce((sum, item) => sum + item.totalAmount, 0),
+      invoices: list
+    }
+  });
+});
+
+router.get('/invoices/:id', requireCustomerOrPublicInvoiceAuth, (req, res) => {
   const invId = Number(req.params.id);
   if (!invId) {
     return res.status(400).json({ success: false, message: 'ID tagihan tidak valid.' });
@@ -4557,6 +4665,8 @@ router.get('/invoices/:id', requireCustomerApiAuth, (req, res) => {
   const qrisInfo = ensureCustomerApiInvoiceQrisUnique(inv);
   const uniqueCode = qrisInfo.uniqueCode;
   const totalAmt = qrisInfo.amountUnique || baseAmt;
+
+  const activeGateway = paymentSvc.resolveConfiguredGatewayForAmount(settings, baseAmt) || 'qris_static';
 
   let rawPayload = String(settings.qris_static_payload || '').trim();
   let qrisPayload = '';
@@ -4585,10 +4695,11 @@ router.get('/invoices/:id', requireCustomerApiAuth, (req, res) => {
       qrisImageEndpoint: `/api/customer/invoices/${inv.id}/qris-image`,
       status: inv.status || 'unpaid',
       paidAt: inv.paid_at,
-      paymentGateway: inv.payment_gateway,
+      activeGateway: activeGateway,
+      paymentGateway: inv.payment_gateway || activeGateway,
       paymentOrderId: inv.payment_order_id,
       paymentLink: inv.payment_link,
-      instructions: 'Transfer manual atau e-wallet dapat dikonfirmasi langsung via WhatsApp atau dibayarkan melalui Agen / Kasir resmi.'
+      instructions: 'Transfer manual atau scan QRIS melalui m-Banking / e-Wallet (BCA, Mandiri, BRI, BNI, DANA, GoPay, OVO, ShopeePay).'
     }
   });
 });
@@ -4599,7 +4710,7 @@ router.get('/invoices/:id/qris-image', async (req, res) => {
     const invId = Number(req.params.id);
     let inv = null;
     if (invId > 0) {
-      inv = db.prepare('SELECT id, customer_id, amount, status, qris_unique_code, qris_amount_unique FROM invoices WHERE id = ?').get(invId);
+      inv = db.prepare('SELECT id, customer_id, amount, status, qris_unique_code, qris_amount_unique, payment_gateway, payment_order_id, payment_link FROM invoices WHERE id = ?').get(invId);
     }
     if (!inv) {
       inv = db.prepare("SELECT id, customer_id, amount, status, qris_unique_code, qris_amount_unique FROM invoices WHERE status != 'paid' ORDER BY id DESC LIMIT 1").get();
@@ -4617,9 +4728,9 @@ router.get('/invoices/:id/qris-image', async (req, res) => {
       payload = qrisUtil.convertStaticQrisToDynamic(payload, totalAmt);
     } catch (_) {}
 
-    const buf = await QRCode.toBuffer(payload, { width: 500, margin: 2 });
+    const buf = await QRCode.toBuffer(payload, { width: 600, margin: 2 });
     res.setHeader('Content-Type', 'image/png');
-    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.setHeader('Cache-Control', 'public, max-age=120');
     res.send(buf);
   } catch (e) {
     res.status(500).send('Error generating QRIS: ' + e.message);
@@ -4681,11 +4792,16 @@ router.post('/invoices/:id/pay', requireCustomerApiAuth, async (req, res) => {
   }
 });
 
-// Cek Status Pembayaran Real-time
-router.get('/invoices/:id/check-status', requireCustomerApiAuth, (req, res) => {
+// Cek Status Pembayaran Real-time (Support Customer Auth maupun Public Token)
+router.get('/invoices/:id/check-status', requireCustomerOrPublicInvoiceAuth, (req, res) => {
   const invId = Number(req.params.id);
-  const inv = db.prepare('SELECT id, status, paid_at, payment_gateway FROM invoices WHERE id = ? AND customer_id = ?').get(invId, req.customer.id);
+  const inv = db.prepare('SELECT id, customer_id, status, paid_at, payment_gateway FROM invoices WHERE id = ?').get(invId);
   if (!inv) return res.status(404).json({ success: false, message: 'Tagihan tidak ditemukan.' });
+
+  // Validasi customer_id jika customer authenticated
+  if (req.customer && Number(inv.customer_id) !== Number(req.customer.id || req.customer.customerId)) {
+    return res.status(403).json({ success: false, message: 'Akses ditolak.' });
+  }
 
   res.json({
     success: true,
