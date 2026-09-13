@@ -3878,4 +3878,7 @@ router.post('/customer/reconnect', async (req, res) => {
   }
 });
 
+router.ensureInvoiceQrisUnique = ensureInvoiceQrisUnique;
+router.getStaticQrisQrUrlForAmount = getStaticQrisQrUrlForAmount;
+
 module.exports = router;
