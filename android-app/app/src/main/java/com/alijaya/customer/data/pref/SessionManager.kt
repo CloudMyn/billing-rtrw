@@ -17,6 +17,7 @@ class SessionManager(context: Context) {
         private const val KEY_CUSTOMER_NAME = "key_customer_name"
         private const val KEY_CUSTOMER_PHONE = "key_customer_phone"
         private const val KEY_ISP_NAME = "key_isp_name"
+        private const val KEY_ADMIN_PHONE = "key_admin_phone"
         private const val KEY_PRINTER_MAC = "key_printer_mac"
         private const val KEY_PRINTER_NAME = "key_printer_name"
         private const val KEY_PRINTER_80MM = "key_printer_80mm"
@@ -149,6 +150,27 @@ class SessionManager(context: Context) {
         if (name.isNotBlank()) {
             prefs.edit().putString(KEY_ISP_NAME, name.trim()).apply()
         }
+    }
+
+    fun getAdminPhone(): String = prefs.getString(KEY_ADMIN_PHONE, "") ?: ""
+    fun saveAdminPhone(phone: String) {
+        if (phone.isNotBlank()) {
+            prefs.edit().putString(KEY_ADMIN_PHONE, phone.trim()).apply()
+        }
+    }
+
+    fun getFormattedAdminPhone(): String {
+        return formatWhatsappNumber(getAdminPhone())
+    }
+
+    fun formatWhatsappNumber(raw: String): String {
+        var digits = raw.replace(Regex("[^0-9]"), "")
+        if (digits.startsWith("08")) {
+            digits = "628" + digits.substring(2)
+        } else if (digits.startsWith("8")) {
+            digits = "628" + digits.substring(1)
+        }
+        return digits
     }
 
     fun getServerUrl(): String = getServerBaseUrl()

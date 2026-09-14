@@ -42,6 +42,10 @@ class SplashActivity : AppCompatActivity() {
                                 binding.tvIspName.text = name
                             }
                         }
+                        val phone = json.optString("companyPhone", json.optString("adminPhone", ""))
+                        if (phone.isNotBlank()) {
+                            session.saveAdminPhone(phone)
+                        }
                     }
                 }
             } catch (_: Exception) {}

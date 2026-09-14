@@ -337,6 +337,11 @@ class HomeFragment : Fragment() {
                                 CustomerApplication.sessionManager.saveIspName(ispName)
                             }
                         }
+                        data.isp?.phone?.let { phone ->
+                            if (phone.isNotBlank()) {
+                                CustomerApplication.sessionManager.saveAdminPhone(phone)
+                            }
+                        }
                         binding.tvCustomerName.text = data.profile.name
                         binding.tvAccountStatus.text = if (data.profile.status == "active") " Layanan Aktif" else " Terisolir"
                         binding.tvPackageName.text = data.packageInfo?.name ?: "Paket Internet Home"

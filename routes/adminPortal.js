@@ -6202,11 +6202,14 @@ router.post('/whatsapp/test-notification', requireAdminSession, async (req, res)
     const waSvc = require('../services/whatsappService');
     const adminNumbers = getSetting('whatsapp_admin_numbers', []);
     const legacyNumbers = getSetting('admins', []);
-    let adminPhone = '087820851413'; // fallback
+    let adminPhone = getSetting('company_phone', '');
     if (Array.isArray(adminNumbers) && adminNumbers.length > 0) {
       adminPhone = adminNumbers[0];
     } else if (Array.isArray(legacyNumbers) && legacyNumbers.length > 0) {
       adminPhone = legacyNumbers[0];
+    }
+    if (!adminPhone) {
+      throw new Error('Nomor WhatsApp admin belum dikonfigurasi di Pengaturan WhatsApp / Perusahaan.');
     }
 
     logger.info(`[WA Test] Mengirim test notifikasi ke nomor admin: ${adminPhone}`);

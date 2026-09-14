@@ -272,7 +272,7 @@ class CollectorHistoryFragment : Fragment() {
                 is80mm = session.isPrinter80mm(),
                 companyName = session.getIspName(),
                 companyAddress = "Kolektor Resmi Lapangan",
-                companyPhone = "0812-3456-7890",
+                companyPhone = session.getAdminPhone().ifBlank { "0812-3456-7890" },
                 invoiceNumber = if (invId > 0) "#INV-$invId" else "#INV-TAGIH",
                 customerName = customerName,
                 packageName = "Langganan Internet",

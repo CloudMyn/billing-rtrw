@@ -248,7 +248,7 @@ class AdminPaidHistoryFragment : Fragment() {
                 is80mm = session.isPrinter80mm(),
                 companyName = session.getIspName(),
                 companyAddress = "KASIR / ADMIN RESMI",
-                companyPhone = "0812-3456-7890",
+                companyPhone = session.getAdminPhone().ifBlank { "0812-3456-7890" },
                 invoiceNumber = invoiceNumber,
                 customerName = customerName,
                 packageName = packageName,

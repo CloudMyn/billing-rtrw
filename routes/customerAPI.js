@@ -149,10 +149,34 @@ function requireCollectorApiAuth(req, res, next) {
   next();
 }
 
+function getResolvedAdminPhone(settings) {
+  const s = settings || getSettingsWithCache();
+  if (s.company_phone && String(s.company_phone).trim()) {
+    return String(s.company_phone).trim();
+  }
+  if (s.company_whatsapp && String(s.company_whatsapp).trim()) {
+    return String(s.company_whatsapp).trim();
+  }
+  if (Array.isArray(s.whatsapp_admin_numbers) && s.whatsapp_admin_numbers.length > 0) {
+    const valid = s.whatsapp_admin_numbers.map(n => String(n || '').trim()).filter(Boolean);
+    if (valid.length > 0) return valid[0];
+  }
+  if (typeof s.whatsapp_admin_numbers === 'string' && s.whatsapp_admin_numbers.trim()) {
+    const parts = s.whatsapp_admin_numbers.split(',').map(n => n.trim()).filter(Boolean);
+    if (parts.length > 0) return parts[0];
+  }
+  if (Array.isArray(s.admins) && s.admins.length > 0) {
+    const valid = s.admins.map(n => String(n || '').trim()).filter(Boolean);
+    if (valid.length > 0) return valid[0];
+  }
+  return '';
+}
+
 // ─── 0. PING & KONEKTIVITAS MOBILE APP (PUBLIC) ──────────────────────────────
 router.get('/ping', (req, res) => {
   const settings = getSettingsWithCache();
   const ispName = settings.company_header || settings.company_name || settings.isp_name || 'ISP NETWORK';
+  const adminPhone = getResolvedAdminPhone(settings);
   res.json({
     success: true,
     status: 'online',
@@ -160,7 +184,8 @@ router.get('/ping', (req, res) => {
     companyHeader: ispName,
     companyName: ispName,
     companyTagline: settings.company_tagline || settings.footer_info || 'Billing & Hotspot System',
-    companyPhone: settings.company_phone || '',
+    companyPhone: adminPhone,
+    adminPhone: adminPhone,
     companyAddress: settings.company_address || '',
     logoUrl: settings.company_logo || '/img/logo-billing-rtrw.png',
     appName: ispName,
@@ -172,6 +197,7 @@ router.get('/ping', (req, res) => {
 router.get('/info', (req, res) => {
   const settings = getSettingsWithCache();
   const ispName = settings.company_header || settings.company_name || settings.isp_name || 'ISP NETWORK';
+  const adminPhone = getResolvedAdminPhone(settings);
   res.json({
     success: true,
     data: {
@@ -179,7 +205,8 @@ router.get('/info', (req, res) => {
       companyHeader: ispName,
       companyName: ispName,
       companyTagline: settings.company_tagline || settings.footer_info || 'Billing & Hotspot System',
-      companyPhone: settings.company_phone || '',
+      companyPhone: adminPhone,
+      adminPhone: adminPhone,
       companyAddress: settings.company_address || '',
       companyEmail: settings.company_email || '',
       logoUrl: settings.company_logo || '/img/logo-billing-rtrw.png',
@@ -3227,12 +3254,14 @@ router.post('/app/customer/ppob/order', requireCustomerApiAuth, async (req, res)
 });
 router.get('/config', (req, res) => {
   const settings = getSettingsWithCache();
+  const adminPhone = getResolvedAdminPhone(settings);
   res.json({
     success: true,
     data: {
       appName: settings.company_header || 'ISP Billing',
       companyHeader: settings.company_header || 'ALIJAYA NET',
-      companyPhone: settings.company_phone || '',
+      companyPhone: adminPhone,
+      adminPhone: adminPhone,
       companyEmail: settings.company_email || '',
       companyAddress: settings.company_address || '',
       operationalHours: settings.operational_hours || '08.00 - 22.00 WIB',
@@ -3511,7 +3540,8 @@ router.get('/dashboard', requireCustomerApiAuth, async (req, res) => {
       ont: ontInfo,
       isp: {
         name: settings.company_header || settings.company_name || settings.isp_name || 'ISP NETWORK',
-        phone: settings.company_phone || '',
+        phone: getResolvedAdminPhone(settings),
+        adminPhone: getResolvedAdminPhone(settings),
         address: settings.company_address || '',
         tagline: settings.company_tagline || settings.footer_info || ''
       }
@@ -4793,6 +4823,8 @@ router.get('/invoices/:id', requireCustomerOrPublicInvoiceAuth, (req, res) => {
       paymentGateway: inv.payment_gateway || activeGateway,
       paymentOrderId: inv.payment_order_id,
       paymentLink: inv.payment_link,
+      companyPhone: getResolvedAdminPhone(settings),
+      adminPhone: getResolvedAdminPhone(settings),
       instructions: 'Transfer manual atau scan QRIS melalui m-Banking / e-Wallet (BCA, Mandiri, BRI, BNI, DANA, GoPay, OVO, ShopeePay).'
     }
   });

@@ -167,6 +167,10 @@ class MainActivity : AppCompatActivity() {
                                 binding.tvTopIspName.text = name
                             }
                         }
+                        val phone = json.optString("companyPhone", json.optString("adminPhone", ""))
+                        if (phone.isNotBlank()) {
+                            session.saveAdminPhone(phone)
+                        }
                     }
                 }
             } catch (_: Exception) {}

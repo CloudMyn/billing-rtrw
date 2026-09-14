@@ -103,14 +103,18 @@ class PaymentActivity : AppCompatActivity() {
         }
 
         binding.btnConfirmPayment.setOnClickListener {
-            val phone = "6287820851413"
+            val phone = CustomerApplication.sessionManager.getFormattedAdminPhone()
+            if (phone.isBlank()) {
+                Toast.makeText(this, "Nomor WhatsApp admin belum dikonfigurasi di server.", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
             val custName = CustomerApplication.sessionManager.getCustomerName().ifBlank { "Pelanggan" }
             val text = "Halo Admin, saya konfirmasi pembayaran tagihan #INV-$invoiceId sebesar Rp ${totalAmountToPay.toLong()} atas nama $custName"
             val url = "https://wa.me/$phone?text=" + Uri.encode(text)
             try {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
             } catch (_: Exception) {
-                Toast.makeText(this, "Membuka WhatsApp...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Tidak dapat membuka aplikasi WhatsApp.", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -287,6 +291,10 @@ class PaymentActivity : AppCompatActivity() {
                 try {
                     val data = JSONObject(jsonStr).optJSONObject("data")
                     if (data != null) {
+                        val adminPhone = data.optString("adminPhone", data.optString("companyPhone", ""))
+                        if (adminPhone.isNotBlank()) {
+                            CustomerApplication.sessionManager.saveAdminPhone(adminPhone)
+                        }
                         val baseAmt = data.optDouble("baseAmount", 150000.0)
                         val uniqueCode = data.optInt("uniqueCode", 123)
                         val totalAmt = data.optDouble("totalAmount", baseAmt + uniqueCode)

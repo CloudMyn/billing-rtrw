@@ -192,6 +192,10 @@ class LoginActivity : AppCompatActivity() {
                                     Toast.makeText(this@LoginActivity, "Terhubung ke $name!", Toast.LENGTH_SHORT).show()
                                 }
                             }
+                            val phone = json.optString("companyPhone", json.optString("adminPhone", ""))
+                            if (phone.isNotBlank()) {
+                                CustomerApplication.sessionManager.saveAdminPhone(phone)
+                            }
                         }
                     }
                 } catch (_: Exception) {}

@@ -320,6 +320,10 @@ class ServerConfigActivity : AppCompatActivity() {
                                 if (detectedIsp.isNotBlank()) {
                                     CustomerApplication.sessionManager.saveIspName(detectedIsp)
                                 }
+                                val phone = json.optString("companyPhone", json.optString("adminPhone", ""))
+                                if (phone.isNotBlank()) {
+                                    CustomerApplication.sessionManager.saveAdminPhone(phone)
+                                }
                             } catch (_: Exception) {}
                         }
                         true
@@ -441,6 +445,10 @@ class ServerConfigActivity : AppCompatActivity() {
                                 detectedIsp = json.optString("companyHeader", json.optString("ispName", json.optString("appName", "")))
                                 if (detectedIsp.isNotBlank()) {
                                     CustomerApplication.sessionManager.saveIspName(detectedIsp)
+                                }
+                                val phone = json.optString("companyPhone", json.optString("adminPhone", ""))
+                                if (phone.isNotBlank()) {
+                                    CustomerApplication.sessionManager.saveAdminPhone(phone)
                                 }
                             } catch (_: Exception) {}
                         }
