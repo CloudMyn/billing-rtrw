@@ -1803,13 +1803,115 @@ async function removeStaticIp(ip, routerId = null) {
   }
 }
 
+function stripAnsi(str) {
+  if (!str || typeof str !== 'string') return '';
+  return str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+}
+
+async function getLiveMikrotikExportViaSsh(host, user, password, port = 22, timeoutMs = 30000) {
+  const { Client } = require('ssh2');
+  return new Promise((resolve, reject) => {
+    const conn = new Client();
+    let output = '';
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        try { conn.end(); } catch {}
+        reject(new Error(`Timeout (${timeoutMs}ms) saat mengambil export langsung dari MikroTik`));
+      }
+    }, timeoutMs);
+
+    conn.on('ready', () => {
+      conn.exec('/export compact', (err, stream) => {
+        if (err) {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            try { conn.end(); } catch {}
+            reject(err);
+          }
+          return;
+        }
+
+        stream.on('data', (data) => {
+          output += data.toString('utf8');
+        });
+
+        stream.stderr.on('data', (data) => {
+          output += data.toString('utf8');
+        });
+
+        stream.on('close', (code) => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            try { conn.end(); } catch {}
+            const cleaned = stripAnsi(output).trim();
+            if (cleaned.length > 200) {
+              resolve(cleaned);
+            } else {
+              reject(new Error('Hasil export MikroTik terlalu pendek atau kosong'));
+            }
+          }
+        });
+      });
+    });
+
+    conn.on('error', (err) => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        try { conn.end(); } catch {}
+        reject(err);
+      }
+    });
+
+    conn.connect({
+      host,
+      port: Number(port) || 22,
+      username: user,
+      password,
+      readyTimeout: 10000,
+      keepaliveInterval: 5000
+    });
+  });
+}
+
 async function getBackup(routerId = null) {
   try {
     const rid = (routerId && routerId !== 'all') ? String(routerId) : null;
+    let router = null;
+    if (rid) {
+      router = db.prepare('SELECT * FROM routers WHERE id = ?').get(rid);
+    }
+    if (!router) {
+      router = db.prepare('SELECT * FROM routers WHERE is_active = 1 ORDER BY id ASC LIMIT 1').get();
+    }
+
+    const routerName = router ? router.name : 'MikroTik';
+    const routerHost = router ? router.host : '192.168.8.1';
+    const routerUser = router ? router.user : 'billing';
+    const routerPass = router ? router.password : '060111';
+    const sshPort = Number(router?.ssh_port || 22);
+
+    // 1. PRIORITAS UTAMA: Tarik LIVE /export compact langsung dari console MikroTik via SSH
+    try {
+      logger.info(`[getBackup] Mencoba menarik LIVE backup RSC langsung dari MikroTik (${routerHost}:${sshPort})...`);
+      const liveRsc = await getLiveMikrotikExportViaSsh(routerHost, routerUser, routerPass, sshPort, 25000);
+      if (liveRsc && liveRsc.length > 300) {
+        logger.info(`[getBackup] Berhasil menarik LIVE backup RSC langsung dari MikroTik (${liveRsc.length} bytes).`);
+        return liveRsc;
+      }
+    } catch (sshErr) {
+      logger.warn(`[getBackup] Live export via SSH tidak aktif atau gagal (${sshErr.message}). Beralih ke fallback file tersimpan / database...`);
+    }
+
+    // 2. FALLBACK KEDUA: Jika router 1 (atau default) dan file hasil kurasi ROS7 tersedia di server
     const ros7RscPath = path.join(__dirname, '..', 'backup_rb4011_ros7_ready.rsc');
     const baseRscPath = path.join(__dirname, '..', 'backup_rb4011.rsc');
 
-    // Jika router yang dipilih adalah router 1 (atau default) dan file hasil perapian ROS7 tersedia, prioritaskan file tersebut
     if ((!rid || rid === '1') && fs.existsSync(ros7RscPath)) {
       const savedContent = fs.readFileSync(ros7RscPath, 'utf8');
       if (savedContent && savedContent.length > 500) {
@@ -1822,17 +1924,7 @@ async function getBackup(routerId = null) {
       }
     }
 
-    // Jika file rsc statis tidak ada atau untuk router lain, generate dinamis dari Database Billing
-    let router = null;
-    if (rid) {
-      router = db.prepare('SELECT * FROM routers WHERE id = ?').get(rid);
-    }
-    if (!router) {
-      router = db.prepare('SELECT * FROM routers WHERE is_active = 1 ORDER BY id ASC LIMIT 1').get();
-    }
-
-    const routerName = router ? router.name : 'MikroTik';
-    const routerHost = router ? router.host : '192.168.8.1';
+    // 3. FALLBACK KETIGA: Generate dinamis dari Database Billing (IP Pools, Secrets, Profiles, Queues, Isolir)
     const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
     const rscLines = [];
