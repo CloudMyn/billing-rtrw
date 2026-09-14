@@ -151,24 +151,29 @@ function requireCollectorApiAuth(req, res, next) {
 
 function getResolvedAdminPhone(settings) {
   const s = settings || getSettingsWithCache();
-  if (s.company_phone && String(s.company_phone).trim()) {
-    return String(s.company_phone).trim();
-  }
-  if (s.company_whatsapp && String(s.company_whatsapp).trim()) {
-    return String(s.company_whatsapp).trim();
-  }
-  if (Array.isArray(s.whatsapp_admin_numbers) && s.whatsapp_admin_numbers.length > 0) {
-    const valid = s.whatsapp_admin_numbers.map(n => String(n || '').trim()).filter(Boolean);
-    if (valid.length > 0) return valid[0];
-  }
-  if (typeof s.whatsapp_admin_numbers === 'string' && s.whatsapp_admin_numbers.trim()) {
-    const parts = s.whatsapp_admin_numbers.split(',').map(n => n.trim()).filter(Boolean);
-    if (parts.length > 0) return parts[0];
-  }
-  if (Array.isArray(s.admins) && s.admins.length > 0) {
-    const valid = s.admins.map(n => String(n || '').trim()).filter(Boolean);
-    if (valid.length > 0) return valid[0];
-  }
+  const pickFirst = (val) => {
+    if (!val) return '';
+    if (Array.isArray(val)) {
+      for (const item of val) {
+        const res = pickFirst(item);
+        if (res) return res;
+      }
+      return '';
+    }
+    const str = String(val).trim();
+    if (!str) return '';
+    const parts = str.split(/[,;\/]+/).map(p => p.trim()).filter(Boolean);
+    return parts.length > 0 ? parts[0] : '';
+  };
+
+  const p1 = pickFirst(s.company_phone);
+  if (p1) return p1;
+  const p2 = pickFirst(s.company_whatsapp);
+  if (p2) return p2;
+  const p3 = pickFirst(s.whatsapp_admin_numbers);
+  if (p3) return p3;
+  const p4 = pickFirst(s.admins);
+  if (p4) return p4;
   return '';
 }
 

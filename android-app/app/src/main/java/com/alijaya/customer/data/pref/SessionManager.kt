@@ -164,7 +164,8 @@ class SessionManager(context: Context) {
     }
 
     fun formatWhatsappNumber(raw: String): String {
-        var digits = raw.replace(Regex("[^0-9]"), "")
+        val firstToken = raw.split(',', ';', '/').firstOrNull { it.isNotBlank() } ?: ""
+        var digits = firstToken.replace(Regex("[^0-9]"), "")
         if (digits.startsWith("08")) {
             digits = "628" + digits.substring(2)
         } else if (digits.startsWith("8")) {
