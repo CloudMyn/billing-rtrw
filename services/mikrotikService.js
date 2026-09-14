@@ -1,5 +1,7 @@
 const dns = require('dns');
 const net = require('net');
+const fs = require('fs');
+const path = require('path');
 const { URL } = require('url');
 const { RouterOSClient } = require('routeros-client');
 const { getSettingsWithCache } = require('../config/settingsManager');
@@ -1798,6 +1800,130 @@ async function removeStaticIp(ip, routerId = null) {
     throw e;
   } finally {
     if (conn && conn.api) conn.api.close();
+  }
+}
+
+async function getBackup(routerId = null) {
+  try {
+    const rid = (routerId && routerId !== 'all') ? String(routerId) : null;
+    const ros7RscPath = path.join(__dirname, '..', 'backup_rb4011_ros7_ready.rsc');
+    const baseRscPath = path.join(__dirname, '..', 'backup_rb4011.rsc');
+
+    // Jika router yang dipilih adalah router 1 (atau default) dan file hasil perapian ROS7 tersedia, prioritaskan file tersebut
+    if ((!rid || rid === '1') && fs.existsSync(ros7RscPath)) {
+      const savedContent = fs.readFileSync(ros7RscPath, 'utf8');
+      if (savedContent && savedContent.length > 500) {
+        return savedContent;
+      }
+    } else if ((!rid || rid === '1') && fs.existsSync(baseRscPath)) {
+      const savedContent = fs.readFileSync(baseRscPath, 'utf8');
+      if (savedContent && savedContent.length > 500) {
+        return savedContent;
+      }
+    }
+
+    // Jika file rsc statis tidak ada atau untuk router lain, generate dinamis dari Database Billing
+    let router = null;
+    if (rid) {
+      router = db.prepare('SELECT * FROM routers WHERE id = ?').get(rid);
+    }
+    if (!router) {
+      router = db.prepare('SELECT * FROM routers WHERE is_active = 1 ORDER BY id ASC LIMIT 1').get();
+    }
+
+    const routerName = router ? router.name : 'MikroTik';
+    const routerHost = router ? router.host : '192.168.8.1';
+    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
+
+    const rscLines = [];
+    rscLines.push(`# ===================================================`);
+    rscLines.push(`# ALIJAYANET MIKROTIK RSC BACKUP EXPORT`);
+    rscLines.push(`# Router   : ${routerName} (${routerHost})`);
+    rscLines.push(`# Tanggal  : ${nowStr}`);
+    rscLines.push(`# Format   : RouterOS Script (.rsc) ROS7 Ready`);
+    rscLines.push(`# Generator: Billing RTRW System`);
+    rscLines.push(`# ===================================================\n`);
+
+    // 1. IP Pools
+    rscLines.push(`/ip pool`);
+    rscLines.push(`add name=pool-pppoe ranges=192.168.10.10-192.168.10.250`);
+    rscLines.push(`add name=pool-hotspot ranges=192.168.100.10-192.168.100.250`);
+    rscLines.push(`add name=isolir ranges=192.168.205.10-192.168.205.250\n`);
+
+    // 2. PPP Profiles dari packages
+    const packages = db.prepare('SELECT * FROM packages WHERE is_active = 1').all();
+    rscLines.push(`/ppp profile`);
+    rscLines.push(`add local-address=192.168.205.1 name=isolir rate-limit=2k/2k remote-address=isolir`);
+    for (const pkg of packages) {
+      const up = Number(pkg.speed_up || 0) || 0;
+      const down = Number(pkg.speed_down || 0) || 0;
+      const rateLimit = (up > 0 && down > 0) ? `${Math.round(up/1000)}M/${Math.round(down/1000)}M` : '5M/5M';
+      rscLines.push(`add local-address=192.168.10.1 name="${pkg.name}" rate-limit="${rateLimit}" remote-address=pool-pppoe`);
+    }
+    rscLines.push('');
+
+    // 3. PPP Secrets dari database customers
+    const pppCustomers = db.prepare("SELECT * FROM customers WHERE connection_type = 'pppoe' AND pppoe_username IS NOT NULL AND pppoe_username != ''").all();
+    if (pppCustomers.length > 0) {
+      rscLines.push(`/ppp secret`);
+      for (const c of pppCustomers) {
+        const pkg = packages.find(p => p.id === c.package_id);
+        const profile = (c.status === 'suspended' || c.status === 'isolated') ? (c.isolir_profile || 'isolir') : (pkg ? pkg.name : 'default');
+        const pass = c.pppoe_password || c.pppoe_username;
+        let parts = [`add name="${c.pppoe_username}" password="${pass}" profile="${profile}" service=pppoe`];
+        if (c.name) parts.push(`comment="${c.name.replace(/"/g, '')} - ${c.phone || ''}"`);
+        if (c.status === 'inactive') parts.push(`disabled=yes`);
+        rscLines.push(parts.join(' '));
+      }
+      rscLines.push('');
+    }
+
+    // 4. Hotspot Profiles & Users
+    rscLines.push(`/ip hotspot user profile`);
+    rscLines.push(`add name=default shared-users=1`);
+    for (const pkg of packages) {
+      const up = Number(pkg.speed_up || 0) || 0;
+      const down = Number(pkg.speed_down || 0) || 0;
+      const rateLimit = (up > 0 && down > 0) ? `${Math.round(up/1000)}M/${Math.round(down/1000)}M` : '5M/5M';
+      rscLines.push(`add name="${pkg.name}" rate-limit="${rateLimit}" shared-users=1`);
+    }
+    rscLines.push('');
+
+    const hotspotCustomers = db.prepare("SELECT * FROM customers WHERE connection_type = 'hotspot' AND hotspot_username IS NOT NULL AND hotspot_username != ''").all();
+    if (hotspotCustomers.length > 0) {
+      rscLines.push(`/ip hotspot user`);
+      for (const c of hotspotCustomers) {
+        const pkg = packages.find(p => p.id === c.package_id);
+        const profile = pkg ? pkg.name : 'default';
+        const pass = c.hotspot_password || c.hotspot_username;
+        rscLines.push(`add name="${c.hotspot_username}" password="${pass}" profile="${profile}" comment="${c.name.replace(/"/g, '')}"`);
+      }
+      rscLines.push('');
+    }
+
+    // 5. Static IP Queues
+    const staticCustomers = db.prepare("SELECT * FROM customers WHERE connection_type = 'static' AND static_ip IS NOT NULL AND static_ip != ''").all();
+    if (staticCustomers.length > 0) {
+      rscLines.push(`/queue simple`);
+      for (const c of staticCustomers) {
+        const pkg = packages.find(p => p.id === c.package_id);
+        const up = Number(pkg?.speed_up || 0) || 0;
+        const down = Number(pkg?.speed_down || 0) || 0;
+        const rateLimit = (up > 0 && down > 0) ? `${Math.round(up/1000)}M/${Math.round(down/1000)}M` : '5M/5M';
+        rscLines.push(`add name="QUEUE_${c.name.replace(/"/g, '')}" target="${c.static_ip}/32" max-limit="${rateLimit}" comment="${c.name.replace(/"/g, '')}"`);
+      }
+      rscLines.push('');
+    }
+
+    // 6. Routing & Isolir Rules (ROS7 Ready)
+    rscLines.push(`/routing table\nadd disabled=no fib name=isolir\n`);
+    rscLines.push(`/ip route rule\nadd src-address=192.168.205.0/24 table=isolir\n`);
+    rscLines.push(`/ip firewall nat\nadd action=masquerade chain=srcnat comment="NAT MASQUERADE DEFAULT" out-interface-list=WAN\n`);
+
+    return rscLines.join('\r\n');
+  } catch (err) {
+    logger.error(`[getBackup] Error generating backup: ${err.message}`);
+    return `# Gagal generate backup RSC: ${err.message}\r\n`;
   }
 }
 
