@@ -79,16 +79,22 @@ object AppUpdateHelper {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) pInfo.longVersionCode.toInt() else pInfo.versionCode
                         } catch (_: Exception) { 1 }
 
-                        if (serverVersionCode > currentVersionCode || showToastIfLatest) {
-                            AlertDialog.Builder(activity)
-                                .setTitle(" Pembaruan Aplikasi Tersedia (v" + versionName + ")")
+                        val forceUpdate = obj.optBoolean("forceUpdate", false)
+
+                        if (serverVersionCode > currentVersionCode) {
+                            val builder = AlertDialog.Builder(activity)
+                                .setTitle("🚀 Pembaruan Aplikasi Tersedia (v" + versionName + ")")
                                 .setMessage(releaseNotes + "\n\nApakah Anda ingin mengunduh dan memasang pembaruan sekarang?")
-                                .setPositiveButton(" Unduh & Pasang") { _, _ ->
+                                .setPositiveButton("⬇️ Unduh & Pasang") { _, _ ->
                                     val fullDownloadUrl = if (downloadPath.startsWith("http")) downloadPath else if (base.endsWith("/")) base + downloadPath.removePrefix("/") else "$base$downloadPath"
                                     downloadAndInstallApk(activity, fullDownloadUrl)
                                 }
-                                .setNegativeButton("Nanti", null)
-                                .show()
+                                .setCancelable(!forceUpdate)
+
+                            if (!forceUpdate) {
+                                builder.setNegativeButton("Nanti", null)
+                            }
+                            builder.show()
                         } else if (showToastIfLatest) {
                             Toast.makeText(activity, "Aplikasi Anda sudah versi terbaru (v" + versionName + ")", Toast.LENGTH_SHORT).show()
                         }
