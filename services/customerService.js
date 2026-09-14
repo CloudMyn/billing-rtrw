@@ -642,10 +642,30 @@ async function suspendCustomer(id) {
   return true;
 }
 
+function _handleUnsuspendInvoice(id, customer, wasSuspended, targetStatus) {
+  if (wasSuspended && (targetStatus === 'active' || targetStatus === 'ditangguhkan') && customer.package_id) {
+    try {
+      const now = new Date();
+      const curMonth = now.getMonth() + 1;
+      const curYear = now.getFullYear();
+      const existingCurInv = db.prepare('SELECT id FROM invoices WHERE customer_id = ? AND period_month = ? AND period_year = ? LIMIT 1').get(id, curMonth, curYear);
+      if (!existingCurInv) {
+        const billingSvc = require('./billingService');
+        billingSvc.generateInvoiceForCustomer(id, curMonth, curYear);
+        logger.info(`[activateCustomer] Pelanggan "${customer.name}" (ID: ${id}) dibuka dari isolir (status: ${targetStatus}). Tagihan periode berjalan ${curMonth}/${curYear} otomatis diterbitkan.`);
+      }
+    } catch (invErr) {
+      logger.error(`[activateCustomer] Gagal generate tagihan periode berjalan untuk pelanggan "${customer.name}" (ID: ${id}): ${invErr.message}`);
+    }
+  }
+}
+
 async function activateCustomer(id, targetStatus = 'active') {
   const customer = getCustomerById(id);
   if (!customer) throw new Error('Pelanggan tidak ditemukan');
   
+  const wasSuspended = (customer.status === 'suspended' || customer.status === 'isolated');
+
   // Get effective router_id (respects multi-router mode setting)
   const effectiveRouterId = getEffectiveRouterId(customer.router_id);
 
@@ -657,6 +677,7 @@ async function activateCustomer(id, targetStatus = 'active') {
   if (hasMikrotikConnection && !effectiveRouterId) {
     logger.warn(`[activateCustomer] Pelanggan "${customer.name}" (ID: ${id}) memiliki koneksi ${customer.connection_type} tapi router_id NULL dan tidak ada default router. Aktivasi lokal hanya, MikroTik tidak diupdate.`);
     updateCustomer(id, { ...customer, status: targetStatus });
+    _handleUnsuspendInvoice(id, customer, wasSuspended, targetStatus);
     return;
   }
 
@@ -708,6 +729,7 @@ async function activateCustomer(id, targetStatus = 'active') {
 
   // Update database status SETELAH MikroTik berhasil (atau gagal tapi continue)
   updateCustomer(id, { ...customer, status: targetStatus });
+  _handleUnsuspendInvoice(id, customer, wasSuspended, targetStatus);
   return true;
 }
 

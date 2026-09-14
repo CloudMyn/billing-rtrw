@@ -2333,9 +2333,13 @@ router.post('/customers/:id/isolate', requireAdminSession, async (req, res) => {
 
 router.post('/customers/:id/unisolate', requireAdminSession, async (req, res) => {
   try {
-    await customerSvc.activateCustomer(req.params.id);
     const customer = customerSvc.getCustomerById(req.params.id);
-    req.session._msg = { type: 'success', text: `Layanan pelanggan "${customer.name}" berhasil diaktifkan kembali.` };
+    if (!customer) throw new Error('Pelanggan tidak ditemukan');
+    const unpaid = db.prepare("SELECT COUNT(*) as cnt FROM invoices WHERE customer_id=? AND status='unpaid'").get(req.params.id)?.cnt || 0;
+    const targetStatus = unpaid > 0 ? 'ditangguhkan' : 'active';
+    await customerSvc.activateCustomer(req.params.id, targetStatus);
+    const statusLabel = targetStatus === 'ditangguhkan' ? 'DITANGGUHKAN (Bebas auto-isolir sampai awal bulan berikutnya)' : 'AKTIF';
+    req.session._msg = { type: 'success', text: `Layanan pelanggan "${customer.name}" berhasil diaktifkan kembali (${statusLabel}).` };
   } catch (e) {
     req.session._msg = { type: 'error', text: 'Gagal aktivasi: ' + e.message };
   }
