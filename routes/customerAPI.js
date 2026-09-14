@@ -291,15 +291,19 @@ router.get('/app/tech-summary', requireTechApiAuth, (req, res) => {
 
 // ─── 0.3 IN-APP AUTO UPDATE ENDPOINT ──────────────────────────────────────────
 router.get('/app/version', (req, res) => {
+  const settings = getSettingsWithCache();
+  const vCode = Number(settings.app_version_code) || 4;
+  const vName = settings.app_version_name || "1.2.2";
+  const notes = settings.app_release_notes || "• Nomor WhatsApp admin dinamis otomatis dari server\n• Peningkatan kecepatan & stabilitas koneksi\n• Pembaruan sistem QRIS dan tagihan";
   res.json({
     success: true,
     data: {
-      versionCode: 2,
-      versionName: "1.2.0",
+      versionCode: vCode,
+      versionName: vName,
       downloadUrl: "/downloads/billing-rtrw.apk",
       apkFileName: "billing-rtrw.apk",
-      releaseNotes: "• Tampilan Barcode QRIS Real-time Dinamis dengan Kode Unik\n• Fitur Pembaruan Otomatis APK Langsung dari Server\n• Peningkatan Responsivitas Navigasi & Formulir Native",
-      forceUpdate: false
+      releaseNotes: notes,
+      forceUpdate: Boolean(settings.app_force_update)
     }
   });
 });
