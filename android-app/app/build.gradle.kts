@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "com.alijaya.customer"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.alijaya.customer"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 4
         versionName = "1.2.2"
 
