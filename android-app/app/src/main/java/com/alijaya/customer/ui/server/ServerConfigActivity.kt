@@ -53,7 +53,7 @@ class ServerConfigActivity : AppCompatActivity() {
         val isGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             permissions[Manifest.permission.BLUETOOTH_CONNECT] == true
         } else {
-            permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true || permissions[Manifest.permission.BLUETOOTH] == true
+            permissions[Manifest.permission.BLUETOOTH] == true
         }
 
         if (isGranted) {
@@ -231,15 +231,6 @@ class ServerConfigActivity : AppCompatActivity() {
                 requestBtPermissionLauncher.launch(arrayOf(
                     Manifest.permission.BLUETOOTH_CONNECT,
                     Manifest.permission.BLUETOOTH_SCAN
-                ))
-                return
-            }
-        } else {
-            val locGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-            if (!locGranted) {
-                requestBtPermissionLauncher.launch(arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
                 ))
                 return
             }
