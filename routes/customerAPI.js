@@ -292,9 +292,9 @@ router.get('/app/tech-summary', requireTechApiAuth, (req, res) => {
 // ─── 0.3 IN-APP AUTO UPDATE ENDPOINT ──────────────────────────────────────────
 router.get('/app/version', (req, res) => {
   const settings = getSettingsWithCache();
-  const vCode = Number(settings.app_version_code) || 6;
-  const vName = settings.app_version_name || "1.2.4";
-  const notes = settings.app_release_notes || "• Nomor WhatsApp admin dinamis otomatis dari server\n• Peningkatan kecepatan & stabilitas koneksi\n• Pembaruan sistem QRIS dan tagihan";
+  const vCode = Number(settings.app_version_code) || 7;
+  const vName = settings.app_version_name || "1.2.5";
+  const notes = settings.app_release_notes || "• Riwayat transaksi pulsa & PPOB di halaman pembelian\n• Nomor WhatsApp admin dinamis otomatis dari server\n• Peningkatan kecepatan & stabilitas koneksi";
   res.json({
     success: true,
     data: {
@@ -3261,7 +3261,27 @@ router.post('/app/customer/ppob/order', requireCustomerApiAuth, async (req, res)
     res.status(500).json({ success: false, message: 'Gagal memproses transaksi: ' + e.message });
   }
 });
+
+// Riwayat transaksi PPOB pelanggan (APK)
+router.get('/app/customer/ppob/history', requireCustomerApiAuth, (req, res) => {
+  try {
+    const customerId = req.customer.id;
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit || '20', 10)));
+    const rows = db.prepare(`
+      SELECT id, sku, product_name, target, price, status, digi_sn, digi_message, created_at, updated_at
+      FROM public_ppob_orders
+      WHERE customer_id = ?
+      ORDER BY id DESC
+      LIMIT ?
+    `).all(customerId, limit);
+    res.json({ success: true, data: rows });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 router.get('/config', (req, res) => {
+
   const settings = getSettingsWithCache();
   const adminPhone = getResolvedAdminPhone(settings);
   res.json({
