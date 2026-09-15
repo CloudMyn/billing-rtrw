@@ -98,9 +98,6 @@ class MainActivity : AppCompatActivity() {
         setupSwipeRefresh()
         setupNavigationMode()
         setupErrorView()
-
-        // Check for App Updates in background
-        com.alijaya.customer.util.AppUpdateHelper.checkForUpdate(this, showToastIfLatest = false)
     }
 
     private fun setupTopBar() {
