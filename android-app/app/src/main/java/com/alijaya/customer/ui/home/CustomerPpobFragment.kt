@@ -33,6 +33,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.NumberFormat
+import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -53,6 +54,7 @@ class CustomerPpobFragment : Fragment() {
     private lateinit var tvProvider: TextView
     private lateinit var etSearch: EditText
     private lateinit var productsContainer: LinearLayout
+    private lateinit var historyContainer: LinearLayout
     private val chipButtons = mutableMapOf<String, Button>()
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -212,6 +214,17 @@ class CustomerPpobFragment : Fragment() {
         })
         productsContainer = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
         container.addView(productsContainer)
+
+        // 5. History Section
+        container.addView(TextView(ctx).apply {
+            text = "📜 Riwayat Transaksi Saya"
+            setTextColor(Color.WHITE)
+            textSize = 15f
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(0, 32, 0, 8)
+        })
+        historyContainer = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        container.addView(historyContainer)
     }
 
     private fun updateCategoryChipsUI() {
@@ -259,7 +272,7 @@ class CustomerPpobFragment : Fragment() {
     private fun loadData(swipe: SwipeRefreshLayout) {
         swipe.isRefreshing = true
         lifecycleScope.launch {
-            val (balJson, catJson) = withContext(Dispatchers.IO) {
+            val (balJson, catJson, histJson) = withContext(Dispatchers.IO) {
                 val b = try {
                     val req = Request.Builder().url("${getBaseUrl()}/api/customer/app/customer/wallet").addHeader("Authorization", "Bearer ${getToken()}").build()
                     val resp = httpClient().newCall(req).execute()
@@ -270,7 +283,12 @@ class CustomerPpobFragment : Fragment() {
                     val resp = httpClient().newCall(req).execute()
                     if (resp.isSuccessful) resp.body?.string()?.let { JSONObject(it) } else null
                 } catch (_: Exception) { null }
-                Pair(b, c)
+                val h = try {
+                    val req = Request.Builder().url("${getBaseUrl()}/api/customer/app/customer/ppob/history").addHeader("Authorization", "Bearer ${getToken()}").build()
+                    val resp = httpClient().newCall(req).execute()
+                    if (resp.isSuccessful) resp.body?.string()?.let { JSONObject(it) } else null
+                } catch (_: Exception) { null }
+                Triple(b, c, h)
             }
             swipe.isRefreshing = false
 
@@ -289,6 +307,112 @@ class CustomerPpobFragment : Fragment() {
             }
 
             applyFilter()
+
+            // Render riwayat
+            val histArr = histJson?.optJSONArray("data") ?: JSONArray()
+            renderHistory(histArr)
+        }
+    }
+
+    private fun refreshHistory() {
+        lifecycleScope.launch {
+            val histJson = withContext(Dispatchers.IO) {
+                try {
+                    val req = Request.Builder().url("${getBaseUrl()}/api/customer/app/customer/ppob/history")
+                        .addHeader("Authorization", "Bearer ${getToken()}").build()
+                    val resp = httpClient().newCall(req).execute()
+                    if (resp.isSuccessful) resp.body?.string()?.let { JSONObject(it) } else null
+                } catch (_: Exception) { null }
+            }
+            val histArr = histJson?.optJSONArray("data") ?: JSONArray()
+            renderHistory(histArr)
+        }
+    }
+
+    private fun renderHistory(histArr: JSONArray) {
+        val ctx = context ?: return
+        historyContainer.removeAllViews()
+
+        if (histArr.length() == 0) {
+            historyContainer.addView(TextView(ctx).apply {
+                text = "Belum ada transaksi PPOB."
+                setTextColor(Color.parseColor("#64748B"))
+                textSize = 13f
+                setPadding(0, 8, 0, 24)
+            })
+            return
+        }
+
+        val inputFmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
+        val inputFmt2 = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        val outputFmt = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale("id", "ID"))
+
+        for (i in 0 until histArr.length()) {
+            val tx = histArr.getJSONObject(i)
+            val status = tx.optString("status", "processing")
+            val isSuccess = status == "fulfilled"
+            val isFailed = status == "failed"
+
+            val statusIcon = if (isSuccess) "✅" else if (isFailed) "❌" else "⏳"
+            val statusColor = if (isSuccess) "#4ADE80" else if (isFailed) "#F87171" else "#FBBF24"
+            val statusText = if (isSuccess) "BERHASIL" else if (isFailed) "GAGAL" else "DIPROSES"
+
+            val rawDate = tx.optString("created_at", "")
+            val displayDate = try {
+                val parsed = try { inputFmt.parse(rawDate) } catch (_: Exception) { inputFmt2.parse(rawDate) }
+                if (parsed != null) outputFmt.format(parsed) else rawDate
+            } catch (_: Exception) { rawDate }
+
+            val card = CardView(ctx).apply {
+                radius = 20f
+                setCardBackgroundColor(Color.parseColor("#1E293B"))
+                cardElevation = 2f
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 10) }
+            }
+            val inner = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(20, 16, 20, 16) }
+
+            // Row 1: Status icon + Product name + Price
+            val row1 = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            row1.addView(TextView(ctx).apply { text = statusIcon; textSize = 18f; setPadding(0, 0, 10, 0) })
+            val col1 = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
+            col1.addView(TextView(ctx).apply {
+                text = tx.optString("product_name", "-")
+                setTextColor(Color.WHITE); textSize = 13.5f; typeface = Typeface.DEFAULT_BOLD
+            })
+            col1.addView(TextView(ctx).apply {
+                text = "🎯 ${tx.optString("target", "-")}  •  $displayDate"
+                setTextColor(Color.parseColor("#94A3B8")); textSize = 11f
+            })
+            row1.addView(col1)
+            row1.addView(TextView(ctx).apply {
+                text = fmt.format(tx.optDouble("price", 0.0))
+                setTextColor(Color.parseColor("#F87171")); textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.END
+            })
+            inner.addView(row1)
+
+            // Row 2: Status badge + SN/pesan
+            val row2 = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 6, 0, 0) }
+            row2.addView(TextView(ctx).apply {
+                text = statusText; setTextColor(Color.parseColor(statusColor)); textSize = 10.5f; typeface = Typeface.DEFAULT_BOLD
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 12, 0) }
+            })
+            val sn = tx.optString("digi_sn", "")
+            val msg = tx.optString("digi_message", "")
+            val snText = when {
+                sn.isNotBlank() -> "SN: $sn"
+                msg.isNotBlank() -> msg
+                else -> ""
+            }
+            if (snText.isNotBlank()) {
+                row2.addView(TextView(ctx).apply {
+                    text = snText; setTextColor(Color.parseColor("#64748B")); textSize = 10.5f
+                    maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+                })
+            }
+            inner.addView(row2)
+
+            card.addView(inner)
+            historyContainer.addView(card)
         }
     }
 
@@ -425,6 +549,7 @@ class CustomerPpobFragment : Fragment() {
                 val remBal = result.optJSONObject("data")?.optDouble("remainingBalance", currentBalance) ?: currentBalance
                 currentBalance = remBal
                 tvBalance.text = fmt.format(currentBalance)
+                refreshHistory() // Perbarui riwayat setelah transaksi berhasil
             } else {
                 Toast.makeText(ctx, "❌ ${result?.optString("message") ?: "Gagal memproses transaksi"}", Toast.LENGTH_LONG).show()
             }
