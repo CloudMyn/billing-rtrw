@@ -292,8 +292,8 @@ router.get('/app/tech-summary', requireTechApiAuth, (req, res) => {
 // ─── 0.3 IN-APP AUTO UPDATE ENDPOINT ──────────────────────────────────────────
 router.get('/app/version', (req, res) => {
   const settings = getSettingsWithCache();
-  const vCode = Number(settings.app_version_code) || 4;
-  const vName = settings.app_version_name || "1.2.2";
+  const vCode = Number(settings.app_version_code) || 5;
+  const vName = settings.app_version_name || "1.2.3";
   const notes = settings.app_release_notes || "• Nomor WhatsApp admin dinamis otomatis dari server\n• Peningkatan kecepatan & stabilitas koneksi\n• Pembaruan sistem QRIS dan tagihan";
   res.json({
     success: true,
