@@ -643,6 +643,7 @@ async function sellVoucherAsAgent(agentId, priceId, opts = {}) {
     const yy = String(now.getFullYear()).slice(-2);
     const agentName = String(agent.name || agent.username || 'Agent').trim().replace(/\s+/g, '_');
     const comment = `vc-${agentName}-${dd}.${mm}.${yy}`;
+    const password = code; // untuk hotspot voucher, username = password = code
     const userData = { server: 'all', name: code, password, profile: profileName, comment };
     if (validity) userData['limit-uptime'] = validity;
 
