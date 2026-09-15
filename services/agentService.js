@@ -932,14 +932,14 @@ function getDigiflazzStaffTransactionById(id) {
   return db.prepare('SELECT * FROM digiflazz_staff_transactions WHERE id = ?').get(txId);
 }
 
-async function buyPulsaAsAdmin({ sku, target, actorPhone = '', actorName = '' } = {}) {
+async function buyPulsaAsAdmin({ sku, target, actorPhone = '', actorName = '', refId: customRefId = '' } = {}) {
   const safeSku = String(sku || '').trim();
   const safeTarget = String(target || '').trim();
   if (!safeSku) throw new Error('SKU tidak valid');
   if (!safeTarget) throw new Error('Target tidak valid');
 
   const prod = getDigiflazzProductLocalBySku(safeSku) || await digiflazzGetProductBySku(safeSku);
-  const refId = makeStaffRefId('ADM');
+  const refId = customRefId ? String(customRefId).trim() : makeStaffRefId('ADM');
 
   let vendor = null;
   let status = 'pending';
@@ -978,7 +978,7 @@ async function buyPulsaAsAdmin({ sku, target, actorPhone = '', actorName = '' } 
   );
 
   const tx = getDigiflazzStaffTransactionById(Number(ins.lastInsertRowid || 0));
-  return { tx, product: prod, vendor };
+  return { tx, product: prod, vendor, refId };
 }
 
 async function checkPulsaStatusAsAdmin(txId) {

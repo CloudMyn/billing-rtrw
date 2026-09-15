@@ -3180,23 +3180,40 @@ router.post('/app/customer/ppob/order', requireCustomerApiAuth, async (req, res)
     // Deduct balance
     db.prepare('UPDATE customers SET balance = balance - ? WHERE id = ?').run(price, customerId);
 
-    // Call digiflazz if enabled
-    let sn = 'TRX-' + Date.now();
-    let msg = 'Transaksi berhasil diproses!';
+    const digiRefId = `CUST-APK-${customerId}-${Date.now()}`;
+    let sn = '';
+    let msg = '';
+    let isSuccess = false;
+    let isFailed = false;
+    let digiTrxId = '';
+
     try {
       if (agentSvc && agentSvc.buyPulsaAsAdmin) {
         const digiRes = await agentSvc.buyPulsaAsAdmin({
           sku,
           target,
           actorName: `Pelanggan ${customer.name}`,
-          actorPhone: customer.phone
+          actorPhone: customer.phone,
+          refId: digiRefId
         });
-        sn = digiRes?.vendor?.sn || digiRes?.tx?.digi_sn || sn;
-        msg = digiRes?.vendor?.message || digiRes?.tx?.digi_message || msg;
-        const status = String(digiRes?.vendor?.status || '').toLowerCase();
-        if (status === 'gagal' || status === 'failed') {
-          // Refund saldo jika ditolak provider
+        sn = String(digiRes?.vendor?.sn || digiRes?.tx?.digi_sn || '');
+        msg = String(digiRes?.vendor?.message || digiRes?.tx?.digi_message || '');
+        digiTrxId = String(digiRes?.vendor?.trx_id || digiRes?.tx?.trx_id || '');
+        const digiStatus = String(digiRes?.vendor?.status || '').toLowerCase();
+        isSuccess = digiStatus === 'sukses' || digiStatus === 'success';
+        isFailed = digiStatus === 'gagal' || digiStatus === 'failed';
+
+        if (isFailed) {
+          // Refund saldo jika ditolak provider langsung
           db.prepare('UPDATE customers SET balance = balance + ? WHERE id = ?').run(price, customerId);
+          try {
+            db.prepare(`
+              INSERT INTO public_ppob_orders (
+                customer_id, buyer_phone, sku, product_name, target, price, status, digi_ref_id, digi_trx_id, digi_sn, digi_message, created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, 'failed', ?, ?, ?, ?, (NOW_LOCAL()), (NOW_LOCAL()))
+            `).run(customerId, customer.phone || '', sku, product.product_name, target, price, digiRefId, digiTrxId, sn, msg || 'Ditolak provider');
+          } catch (_) {}
+
           return res.status(400).json({
             success: false,
             message: 'Transaksi ditolak provider, saldo otomatis dikembalikan. ' + (msg || '')
@@ -3204,60 +3221,78 @@ router.post('/app/customer/ppob/order', requireCustomerApiAuth, async (req, res)
         }
       }
     } catch (digiErr) {
-      // Refund saldo jika error
+      // Refund saldo jika error eksekusi
       db.prepare('UPDATE customers SET balance = balance + ? WHERE id = ?').run(price, customerId);
+      try {
+        db.prepare(`
+          INSERT INTO public_ppob_orders (
+            customer_id, buyer_phone, sku, product_name, target, price, status, digi_ref_id, digi_message, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, 'failed', ?, ?, (NOW_LOCAL()), (NOW_LOCAL()))
+        `).run(customerId, customer.phone || '', sku, product.product_name, target, price, digiRefId, digiErr.message);
+      } catch (_) {}
+
       return res.status(500).json({
         success: false,
         message: 'Gagal memproses transaksi ke provider: ' + digiErr.message
       });
     }
 
+    const orderStatus = isSuccess ? 'fulfilled' : 'processing';
+
     // Catat ke riwayat
     try {
       db.prepare(`
         INSERT INTO public_ppob_orders (
-          customer_id, buyer_phone, sku, product_name, target, price, status, digi_sn, digi_message, fulfilled_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'fulfilled', ?, ?, (NOW_LOCAL()), (NOW_LOCAL()), (NOW_LOCAL()))
-      `).run(customerId, customer.phone || '', sku, product.product_name, target, price, sn, msg);
+          customer_id, buyer_phone, sku, product_name, target, price, status, digi_ref_id, digi_trx_id, digi_sn, digi_message, fulfilled_at, wa_sent, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${isSuccess ? '(NOW_LOCAL())' : 'NULL'}, ?, (NOW_LOCAL()), (NOW_LOCAL()))
+      `).run(customerId, customer.phone || '', sku, product.product_name, target, price, orderStatus, digiRefId, digiTrxId, sn, msg, isSuccess ? 1 : 0);
     } catch (_) {}
 
     const newBalance = db.prepare('SELECT balance FROM customers WHERE id = ?').get(customerId)?.balance || 0;
 
-    // Kirim notifikasi WA struk jika aktif
-    try {
-      const { getSettings } = require('../config/settingsManager');
-      const settings = getSettings();
-      if (settings.whatsapp_enabled && customer.phone) {
-        const { sendWA, whatsappStatus } = await import('./whatsappBot.mjs');
-        if (whatsappStatus.connection === 'open') {
-          await sendWA(customer.phone,
-            `✅ *TRANSAKSI PPOB BERHASIL*\n\n` +
-            `Halo *${customer.name}*,\n` +
-            `Transaksi pembelian produk digital Anda berhasil diproses:\n\n` +
-            `📦 *Produk:* ${product.product_name}\n` +
-            `🎯 *Tujuan:* ${target}\n` +
-            `💰 *Harga:* Rp ${price.toLocaleString('id-ID')}\n` +
-            (sn ? `🔢 *SN / Token:* \`${sn}\`\n` : '') +
-            `💳 *Sisa Saldo:* Rp ${Number(newBalance).toLocaleString('id-ID')}\n\n` +
-            `Terima kasih telah bertransaksi!`
-          );
+    // Kirim notifikasi WA struk HANYA jika status sudah SUKSES
+    if (isSuccess) {
+      try {
+        const { getSettings } = require('../config/settingsManager');
+        const settings = getSettings();
+        if (settings.whatsapp_enabled && customer.phone) {
+          const { sendWA, whatsappStatus } = await import('./whatsappBot.mjs');
+          if (whatsappStatus.connection === 'open') {
+            await sendWA(customer.phone,
+              `✅ *TRANSAKSI PPOB BERHASIL*\n\n` +
+              `Halo *${customer.name}*,\n` +
+              `Transaksi pembelian produk digital Anda berhasil diproses:\n\n` +
+              `📦 *Produk:* ${product.product_name}\n` +
+              `🎯 *Tujuan:* ${target}\n` +
+              `💰 *Harga:* Rp ${price.toLocaleString('id-ID')}\n` +
+              (sn ? `🔢 *SN / Token:* \`${sn}\`\n` : '') +
+              `💳 *Sisa Saldo:* Rp ${Number(newBalance).toLocaleString('id-ID')}\n\n` +
+              `Terima kasih telah bertransaksi!`
+            );
+          }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
+
+    const clientMsg = isSuccess
+      ? `Pembelian ${product.product_name} ke ${target} berhasil!`
+      : `Pesanan ${product.product_name} ke ${target} sedang diproses provider. Silakan pantau di riwayat.`;
 
     res.json({
       success: true,
-      message: `Pembelian ${product.product_name} ke ${target} berhasil!`,
+      message: clientMsg,
       data: {
         sku,
         target,
         productName: product.product_name,
         price,
-        sn,
+        status: orderStatus,
+        sn: isSuccess ? sn : '',
         remainingBalance: Number(newBalance)
       }
     });
   } catch (e) {
+
     res.status(500).json({ success: false, message: 'Gagal memproses transaksi: ' + e.message });
   }
 });
