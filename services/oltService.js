@@ -1484,7 +1484,7 @@ async function getOltStats(id, full = false) {
   const cacheKey = `${id}:${full}`;
   const now = Date.now();
   const cached = statsCache.get(cacheKey);
-  const cacheDuration = full ? 30000 : 10000; // 30s cache for full table, 10s for summary
+  const cacheDuration = full ? 120000 : 10000; // 120s cache for full table, 10s for summary
 
   if (cached && (now - cached.timestamp < cacheDuration)) {
     logger.info(`[oltService] Returning cached stats for OLT ${id} (full: ${full})`);
@@ -1554,7 +1554,7 @@ async function getOltStatsInternal(id, full = false) {
 
   const session = snmp.createSession(olt.host, community, {
     port:     olt.snmp_port || 161,
-    timeout:  full ? 8000 : 5000,
+    timeout:  full ? 10000 : 5000,
     retries:  full ? 2 : 1,
     version:  snmp.Version2c,
   });
@@ -1574,7 +1574,7 @@ async function getOltStatsInternal(id, full = false) {
       resolve(data);
     };
 
-    const timeoutMs = full ? 45000 : 12000;
+    const timeoutMs = full ? 90000 : 12000;
     const globalTimeout = setTimeout(() => {
       stats.error = `Koneksi Timeout (${Math.round(timeoutMs / 1000)}s) - OLT ${olt.host} tidak merespons SNMP/Telnet`;
       safeResolve(stats);
@@ -1724,52 +1724,96 @@ async function getOltStatsInternal(id, full = false) {
         // Summary mode: skip rx/tx/distance/firmware/uptime/reason walks
         // This makes summary 5-10x faster
         if (full) {
-          const tasks = [];
+          // For Hioso/HSGQ, rx/tx DDM walks take ~33s (OLT measures all 256 slots on demand).
+          // Use a dedicated slow session (30s timeout, 0 retries) and walk them SEQUENTIALLY
+          // AFTER the fast walks complete. This prevents packet loss from concurrent walking.
+          const isSlowDdmBrand = (detectedBrandKey === 'hioso' || detectedBrandKey === 'hsgq');
 
-          // Walk OLT cards & unauth ONUs
-          tasks.push(() => fetchCardMetrics(session, detectedBrandKey, stats));
-          tasks.push(() => fetchUnauthOnus(session, activeProfile, stats));
+          if (isSlowDdmBrand && (activeProfile.rx_power_table || activeProfile.tx_power_table)) {
+            // --- Phase 1: Fast walks (status already done, now sn + distance + card + unauth) ---
+            const fastTasks = [];
+            fastTasks.push(() => fetchCardMetrics(session, detectedBrandKey, stats));
+            fastTasks.push(() => fetchUnauthOnus(session, activeProfile, stats));
+            fastTasks.push(() => pickSnTable(session, activeProfile).then(res => snMap = res.map || {}));
+            if (activeProfile.distance_table) {
+              fastTasks.push(() => slowWalk(session, activeProfile.distance_table).then(res => distMap = res));
+            }
+            if (activeProfile.firmware_table) {
+              fastTasks.push(() => slowWalk(session, activeProfile.firmware_table).then(res => fwMap = res));
+            }
+            if (activeProfile.uptime_table) {
+              fastTasks.push(() => slowWalk(session, activeProfile.uptime_table).then(res => upMap = res));
+            }
+            if (activeProfile.offline_reason_table) {
+              fastTasks.push(() => slowWalk(session, activeProfile.offline_reason_table).then(res => reasonMap = res));
+            }
+            await limitConcurrency(fastTasks, 2);
 
-          // 1. Pick SN Table
-          tasks.push(() => pickSnTable(session, activeProfile).then(res => snMap = res.map || {}));
+            // --- Phase 2: Slow DDM walks on dedicated session (sequential, high timeout) ---
+            const slowSession = snmp.createSession(olt.host, community, {
+              port:    olt.snmp_port || 161,
+              timeout: 30000, // 30s per GETBULK batch — DDM on Hioso needs long timeouts
+              retries: 0,     // No retries; a retry on a 30s timeout would kill the budget
+              version: snmp.Version2c,
+            });
+            slowSession.on('error', (err) => {
+              logger.warn(`[SNMP SlowSession Error] OLT ${olt.host}: ${err.message}`);
+            });
+            try {
+              if (activeProfile.rx_power_table) {
+                logger.info(`[oltService] Walking rx_power_table for OLT ${olt.host} (slow DDM session)`);
+                rxMap = await slowWalk(slowSession, activeProfile.rx_power_table);
+                logger.info(`[oltService] rx_power_table done, ${Object.keys(rxMap).length} entries`);
+              }
+              if (activeProfile.tx_power_table) {
+                logger.info(`[oltService] Walking tx_power_table for OLT ${olt.host} (slow DDM session)`);
+                txMap = await slowWalk(slowSession, activeProfile.tx_power_table);
+                logger.info(`[oltService] tx_power_table done, ${Object.keys(txMap).length} entries`);
+              }
+            } catch (ddmErr) {
+              logger.warn(`[oltService] DDM walk failed for OLT ${olt.host}: ${ddmErr.message}`);
+            } finally {
+              try { slowSession.close(); } catch (e) {}
+            }
 
-          // 2. Rx Power
-          if (activeProfile.rx_power_table) {
-            tasks.push(() => slowWalk(session, activeProfile.rx_power_table).then(res => rxMap = res));
-          }
-          // 3. Tx Power
-          if (activeProfile.tx_power_table) {
-            tasks.push(() => slowWalk(session, activeProfile.tx_power_table).then(res => txMap = res));
-          }
-          // 4. Distance
-          if (activeProfile.distance_table) {
-            tasks.push(() => slowWalk(session, activeProfile.distance_table).then(res => distMap = res));
-          }
-          // 5. Firmware
-          if (activeProfile.firmware_table) {
-            tasks.push(() => slowWalk(session, activeProfile.firmware_table).then(res => fwMap = res));
-          }
-          // 6. Uptime
-          if (activeProfile.uptime_table) {
-            tasks.push(() => slowWalk(session, activeProfile.uptime_table).then(res => upMap = res));
-          }
-          // 7. Offline Reason
-          if (activeProfile.offline_reason_table) {
-            tasks.push(() => slowWalk(session, activeProfile.offline_reason_table).then(res => reasonMap = res));
-          }
+          } else {
+            // --- Standard path for all other brands ---
+            const tasks = [];
+            tasks.push(() => fetchCardMetrics(session, detectedBrandKey, stats));
+            tasks.push(() => fetchUnauthOnus(session, activeProfile, stats));
+            tasks.push(() => pickSnTable(session, activeProfile).then(res => snMap = res.map || {}));
+            if (activeProfile.rx_power_table) {
+              tasks.push(() => slowWalk(session, activeProfile.rx_power_table).then(res => rxMap = res));
+            }
+            if (activeProfile.tx_power_table) {
+              tasks.push(() => slowWalk(session, activeProfile.tx_power_table).then(res => txMap = res));
+            }
+            if (activeProfile.distance_table) {
+              tasks.push(() => slowWalk(session, activeProfile.distance_table).then(res => distMap = res));
+            }
+            if (activeProfile.firmware_table) {
+              tasks.push(() => slowWalk(session, activeProfile.firmware_table).then(res => fwMap = res));
+            }
+            if (activeProfile.uptime_table) {
+              tasks.push(() => slowWalk(session, activeProfile.uptime_table).then(res => upMap = res));
+            }
+            if (activeProfile.offline_reason_table) {
+              tasks.push(() => slowWalk(session, activeProfile.offline_reason_table).then(res => reasonMap = res));
+            }
 
-          // OPTIMIZATION: Tune concurrency per brand
-          // ZTE handles 5, others 3-4
-          const concurrencyMap = {
-            'zte': 5,
-            'huawei': 4,
-            'hioso': 2,
-            'vsol': 4,
-            'cdata': 3,
-            'hsgq': 2
-          };
-          const concurrency = concurrencyMap[detectedBrandKey] || 4;
-          await limitConcurrency(tasks, concurrency);
+            // OPTIMIZATION: Tune concurrency per brand
+            // ZTE handles 5, others 3-4
+            const concurrencyMap = {
+              'zte': 5,
+              'huawei': 4,
+              'hioso': 2,
+              'vsol': 4,
+              'cdata': 3,
+              'hsgq': 2
+            };
+            const concurrency = concurrencyMap[detectedBrandKey] || 4;
+            await limitConcurrency(tasks, concurrency);
+          }
         }
 
         await systemMetricsPromise;
