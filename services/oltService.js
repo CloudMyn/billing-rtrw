@@ -1833,7 +1833,13 @@ async function getOltStatsInternal(id, full = false) {
             : (stStr === 'online' || stStr === 'up' || stStr === 'on' || stStr === 'operation');
 
           const nameRaw = getByIdx(nameMap, idx);
-          const nameStr = nameRaw == null ? '' : String(nameRaw).replace(/\0/g, '').trim();
+          // SNMP returns ONU name as Buffer (OctetString) — must decode as UTF-8
+          const nameStr = nameRaw == null
+            ? ''
+            : (Buffer.isBuffer(nameRaw)
+                ? nameRaw.toString('utf8')
+                : String(nameRaw)
+              ).replace(/\0/g, '').trim();
           const name = nameStr || ('ONU-' + idx);
           const snVal = getByIdx(snMap, idx);
           const rxVal = getByIdx(rxMap, idx);
