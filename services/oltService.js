@@ -1770,6 +1770,50 @@ async function getOltStatsInternal(id, full = false) {
                 txMap = await slowWalk(slowSession, activeProfile.tx_power_table);
                 logger.info(`[oltService] tx_power_table done, ${Object.keys(txMap).length} entries`);
               }
+
+              // Gap-fill: Hioso OLT truncates walk responses but individual GET works for all slots.
+              // Find indices present in statusMap but missing from rxMap/txMap, then GET them directly.
+              const statusIndices = Object.keys(statusMap);
+              const missingRx = activeProfile.rx_power_table
+                ? statusIndices.filter(idx => rxMap[idx] == null)
+                : [];
+              const missingTx = activeProfile.tx_power_table
+                ? statusIndices.filter(idx => txMap[idx] == null)
+                : [];
+
+              if (missingRx.length > 0 || missingTx.length > 0) {
+                logger.info(`[oltService] Gap-filling DDM: ${missingRx.length} rx + ${missingTx.length} tx missing, fetching via GET`);
+
+                // Build OID list for batch GET (up to 50 per request)
+                const batchGet = async (oidBase, indices, targetMap) => {
+                  const BATCH = 50;
+                  for (let i = 0; i < indices.length; i += BATCH) {
+                    const batch = indices.slice(i, i + BATCH);
+                    const oids = batch.map(idx => `${oidBase}.${idx}`);
+                    await new Promise(rv => {
+                      slowSession.get(oids, (err, vbs) => {
+                        if (err) { rv(); return; }
+                        for (const vb of vbs) {
+                          if (!vb || snmp.isVarbindError(vb)) continue;
+                          const suffix = vb.oid.split(oidBase + '.')[1];
+                          if (!suffix) continue;
+                          const val = Buffer.isBuffer(vb.value)
+                            ? vb.value.toString('utf8').replace(/\0/g,'').trim()
+                            : String(vb.value).trim();
+                          if (val && val !== 'null' && val !== '0') {
+                            targetMap[suffix] = vb.value; // store raw for decoding
+                          }
+                        }
+                        rv();
+                      });
+                    });
+                  }
+                };
+
+                await batchGet(activeProfile.rx_power_table, missingRx, rxMap);
+                await batchGet(activeProfile.tx_power_table, missingTx, txMap);
+                logger.info(`[oltService] Gap-fill done, rx now ${Object.keys(rxMap).length}, tx now ${Object.keys(txMap).length}`);
+              }
             } catch (ddmErr) {
               logger.warn(`[oltService] DDM walk failed for OLT ${olt.host}: ${ddmErr.message}`);
             } finally {
