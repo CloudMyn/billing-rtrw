@@ -192,6 +192,7 @@ function getCurrentTimeInfo() {
     hour: 'numeric', minute: 'numeric', second: 'numeric',
     hourCycle: 'h23' // 💡 Paksa format jam 00-23 (mencegah bug '24' di tengah malam)
   });
+
   
   const parts = formatter.formatToParts(now);
   const p = {};
@@ -228,7 +229,7 @@ function parseDateInTimezone(dateStr) {
   const date = new Date(dateStr.replace(' ', 'T'));
   if (isNaN(date.getTime())) return null;
 
-  const localDateStr = date.toLocaleString('en-US', { timeZone: tz, hour12: false });
+  const localDateStr = date.toLocaleString('en-US', { timeZone: tz, hourCycle: 'h23' });
   const localDate = new Date(localDateStr);
   const diff = localDate.getTime() - date.getTime();
   
