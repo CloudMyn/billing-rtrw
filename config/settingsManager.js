@@ -147,7 +147,7 @@ function getNowLocal() {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-    hour12: false
+    hourCycle: 'h23' // 💡 Paksa format jam 00-23 (mencegah bug '24' di tengah malam)
   };
   const formatter = new Intl.DateTimeFormat('en-US', options);
   const parts = formatter.formatToParts(now);
@@ -169,7 +169,7 @@ function getCurrentDateInTimezone() {
     timeZone: tz,
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: false
+    hourCycle: 'h23' // 💡 Paksa format jam 00-23 (mencegah bug '24' di tengah malam)
   });
   
   const parts = formatter.formatToParts(now);
@@ -190,7 +190,7 @@ function getCurrentTimeInfo() {
     timeZone: tz,
     year: 'numeric', month: 'numeric', day: 'numeric',
     hour: 'numeric', minute: 'numeric', second: 'numeric',
-    hour12: false
+    hourCycle: 'h23' // 💡 Paksa format jam 00-23 (mencegah bug '24' di tengah malam)
   });
   
   const parts = formatter.formatToParts(now);
