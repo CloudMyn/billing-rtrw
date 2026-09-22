@@ -448,6 +448,7 @@
               <td><span class="badge <%= olt.is_active ? 'bs' : 'bd' %>"><%= olt.is_active ? t('common.active', 'Aktif') : t('common.inactive', 'Nonaktif') %></span></td>
               <td>
                 <div class="d-flex gap-2">
+                  <button type="button" class="btn btn-g btn-icon btn-sm text-primary" title="Test Koneksi" onclick="testExistingOlt('<%= olt.id %>')"><i class="bi bi-broadcast"></i></button>
                   <button class="btn btn-g btn-icon btn-sm" onclick="editOlt('<%= olt.id %>')"><i class="bi bi-pencil"></i></button>
                   <form action="/admin/olts/<%= olt.id %>/delete" method="POST" onsubmit="return confirm(I18N.confirmDeleteOlt)">
                     <button type="submit" class="btn btn-d btn-icon btn-sm"><i class="bi bi-trash"></i></button>
@@ -501,10 +502,14 @@
         </div>
         <div class="fg"><label class="fl">API Base URL (go-api-c320 ZTE)</label><input type="url" name="api_base_url" class="fc" placeholder="http://127.0.0.1:8081 — kosong jika tidak pakai"></div>
         <div class="fg"><label class="fl"><%= t('admin.olts.form.description', 'Deskripsi / Lokasi') %></label><textarea name="description" class="fc" rows="2"></textarea></div>
+        <div id="add-test-result" class="alert alert-i small mt-2" style="display:none; font-size:12px;"></div>
       </div>
-      <div class="mf">
-        <button type="button" class="btn btn-g" onclick="closeModal('addOltModal')"><%= t('common.cancel', 'Batal') %></button>
-        <button type="submit" class="btn btn-p"><%= t('admin.olts.add_modal.save', 'Simpan Perangkat') %></button>
+      <div class="mf d-flex justify-content-between">
+        <button type="button" class="btn btn-outline-primary btn-sm" onclick="testFormOlt('add')"><i class="bi bi-broadcast"></i> Test Koneksi</button>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-g" onclick="closeModal('addOltModal')"><%= t('common.cancel', 'Batal') %></button>
+          <button type="submit" class="btn btn-p"><%= t('admin.olts.add_modal.save', 'Simpan Perangkat') %></button>
+        </div>
       </div>
     </form>
   </div>
@@ -552,10 +557,14 @@
             <option value="0"><%= t('common.inactive', 'Nonaktif') %></option>
           </select>
         </div>
+        <div id="edit-test-result" class="alert alert-i small mt-2" style="display:none; font-size:12px;"></div>
       </div>
-      <div class="mf">
-        <button type="button" class="btn btn-g" onclick="closeModal('editOltModal')"><%= t('common.cancel', 'Batal') %></button>
-        <button type="submit" class="btn btn-p"><%= t('admin.olts.edit_modal.update', 'Update Perangkat') %></button>
+      <div class="mf d-flex justify-content-between">
+        <button type="button" class="btn btn-outline-primary btn-sm" onclick="testFormOlt('edit')"><i class="bi bi-broadcast"></i> Test Koneksi</button>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-g" onclick="closeModal('editOltModal')"><%= t('common.cancel', 'Batal') %></button>
+          <button type="submit" class="btn btn-p"><%= t('admin.olts.edit_modal.update', 'Update Perangkat') %></button>
+        </div>
       </div>
     </form>
   </div>
@@ -1069,6 +1078,66 @@ async function submitWanConfig(e) {
     alert(I18N.errorPrefix + e.message);
   } finally {
     overlay.style.display = 'none';
+  }
+}
+
+async function testExistingOlt(id) {
+  if (!confirm('Uji koneksi SNMP & Telnet ke OLT ini?')) return;
+  const overlay = document.getElementById('loading-overlay');
+  if (overlay) overlay.style.display = 'flex';
+  try {
+    const res = await fetch(`/admin/olts/${id}/test-connection`, { method: 'POST' });
+    const data = await res.json();
+    alert((data.success ? '✅ ' : '⚠️ ') + (data.message || 'Hasil tes koneksi selesai.'));
+  } catch (e) {
+    alert('❌ Error: ' + e.message);
+  } finally {
+    if (overlay) overlay.style.display = 'none';
+  }
+}
+
+async function testFormOlt(type) {
+  const isEdit = type === 'edit';
+  const resultDiv = document.getElementById(isEdit ? 'edit-test-result' : 'add-test-result');
+  
+  const form = isEdit ? document.getElementById('editOltForm') : document.querySelector('#addOltModal form');
+  const host = isEdit ? document.getElementById('e_host').value : form.querySelector('input[name="host"]').value;
+  const snmp_port = isEdit ? document.getElementById('e_snmp_port').value : form.querySelector('input[name="snmp_port"]').value;
+  const snmp_community = isEdit ? document.getElementById('e_snmp_community').value : form.querySelector('input[name="snmp_community"]').value;
+  const brand = isEdit ? document.getElementById('e_brand').value : form.querySelector('select[name="brand"]').value;
+  const web_user = isEdit ? document.getElementById('e_web_user').value : form.querySelector('input[name="web_user"]').value;
+  const web_password = isEdit ? document.getElementById('e_web_password').value : form.querySelector('input[name="web_password"]').value;
+  const telnet_port = isEdit ? document.getElementById('e_telnet_port').value : form.querySelector('input[name="telnet_port"]').value;
+  const enable_password = isEdit ? document.getElementById('e_enable_password').value : form.querySelector('input[name="enable_password"]').value;
+
+  if (!host) {
+    alert('Harap isi IP Address / Host OLT terlebih dahulu.');
+    return;
+  }
+
+  resultDiv.style.display = 'block';
+  resultDiv.className = 'alert alert-i small mt-2';
+  resultDiv.innerHTML = '<i class="bi bi-hourglass-split spin"></i> Menguji koneksi SNMP & Telnet ke ' + host + '...';
+
+  try {
+    const res = await fetch('/admin/olts/test-connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        host, snmp_port, snmp_community, brand, web_user, web_password, telnet_port, enable_password
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      resultDiv.className = 'alert alert-s small mt-2';
+      resultDiv.innerHTML = '<i class="bi bi-check-circle-fill"></i> <strong>Koneksi Sukses!</strong><br>' + (data.message || 'OLT merespons.');
+    } else {
+      resultDiv.className = 'alert alert-d small mt-2';
+      resultDiv.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i> <strong>Koneksi Gagal:</strong><br>' + (data.message || data.error);
+    }
+  } catch (e) {
+    resultDiv.className = 'alert alert-d small mt-2';
+    resultDiv.innerHTML = '<i class="bi bi-x-circle-fill"></i> <strong>Error:</strong> ' + e.message;
   }
 }
 

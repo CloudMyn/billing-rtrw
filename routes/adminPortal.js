@@ -610,6 +610,26 @@ router.get('/olts/:id/stats', requireAdminSession, async (req, res) => {
   }
 });
 
+router.post('/olts/test-connection', requireAdminSession, restrictToAdmin, express.json(), async (req, res) => {
+  try {
+    const result = await oltSvc.testOltConnection(req.body);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+router.post('/olts/:id/test-connection', requireAdminSession, restrictToAdmin, async (req, res) => {
+  try {
+    const olt = oltSvc.getOltById(req.params.id);
+    if (!olt) return res.status(404).json({ success: false, message: 'OLT tidak ditemukan' });
+    const result = await oltSvc.testOltConnection(olt);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 router.post('/olts/:id/onu/:index/reboot', requireAdminSession, restrictToAdmin, async (req, res) => {
   try {
     await oltSvc.rebootOnu(req.params.id, req.params.index);

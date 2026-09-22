@@ -502,7 +502,7 @@ const telnetReadUntil = (socket, matcher, timeoutMs) => {
     const onData = (chunk) => {
       const s = chunk.toString('utf8');
       buf += s;
-      if (buf.includes('--More--') || buf.includes('--Press Enter--')) {
+      if (buf.includes('--More--') || buf.includes('--Press Enter--') || buf.includes('Enter Key To Continue')) {
         socket.write(' ');
       }
       if (typeof matcher === 'function' ? matcher(buf) : matcher.test(buf)) {
@@ -605,51 +605,83 @@ const parseHiosoOnuTable = (text) => {
     const t = line.trim();
     if (!/^0\/\d+:\d+/.test(t)) continue;
     const parts = t.split(/\s+/);
-    if (parts.length < 22) continue;
+    if (parts.length >= 20) {
+      // 22-column legacy format
+      const id = parts[0];
+      const name = parts[1];
+      const mac = parts[2];
+      const status = parts[3];
+      const fwVersion = parts[4];
+      const chipId = parts[5];
+      const ports = parts[6];
+      const rtt = parts[7];
+      const distance = parts[8];
+      const ctcStatus = parts[9];
+      const ctcVer = parts[10];
+      const activate = parts[11];
+      const temperature = parts[12];
+      const txPower = parts[13];
+      const rxPower = parts[14];
+      const onlineTime = parts[15] + ' ' + parts[16];
+      const offlineTime = parts[17] + ' ' + parts[18];
+      const offlineReason = parts[19];
+      const deregisterCnt = parts[parts.length - 1];
+      const online = parts.slice(20, parts.length - 1).join(' ');
 
-    const id = parts[0];
-    const name = parts[1];
-    const mac = parts[2];
-    const status = parts[3];
-    const fwVersion = parts[4];
-    const chipId = parts[5];
-    const ports = parts[6];
-    const rtt = parts[7];
-    const distance = parts[8];
-    const ctcStatus = parts[9];
-    const ctcVer = parts[10];
-    const activate = parts[11];
-    const temperature = parts[12];
-    const txPower = parts[13];
-    const rxPower = parts[14];
-    const onlineTime = parts[15] + ' ' + parts[16];
-    const offlineTime = parts[17] + ' ' + parts[18];
-    const offlineReason = parts[19];
-    const deregisterCnt = parts[parts.length - 1];
-    const online = parts.slice(20, parts.length - 1).join(' ');
+      rows.push({
+        id,
+        name: name === 'NA' ? null : name,
+        mac,
+        status,
+        fwVersion,
+        chipId,
+        ports,
+        rtt,
+        distance,
+        ctcStatus,
+        ctcVer,
+        activate,
+        temperature,
+        txPower,
+        rxPower,
+        onlineTime,
+        offlineTime,
+        offlineReason,
+        online,
+        deregisterCnt,
+      });
+    } else if (parts.length >= 10) {
+      // 12-column modern format (HA7304 / HA7308)
+      // OnuId MacAddress Status Firmware ChipId Ge Fe Pots CtcStatus CtcVer Activate Uptime [Name]
+      const id = parts[0];
+      const mac = parts[1];
+      const status = parts[2];
+      const fwVersion = parts[3];
+      const chipId = parts[4];
+      const ports = (parts[5] || '0') + '/' + (parts[6] || '0');
+      const ctcStatus = parts[8];
+      const ctcVer = parts[9];
+      const activate = parts[10];
+      const uptime = parts[11];
+      const name = parts.length > 12 ? parts.slice(12).join(' ') : null;
 
-    rows.push({
-      id,
-      name: name === 'NA' ? null : name,
-      mac,
-      status,
-      fwVersion,
-      chipId,
-      ports,
-      rtt,
-      distance,
-      ctcStatus,
-      ctcVer,
-      activate,
-      temperature,
-      txPower,
-      rxPower,
-      onlineTime,
-      offlineTime,
-      offlineReason,
-      online,
-      deregisterCnt,
-    });
+      rows.push({
+        id,
+        name: name === 'NA' || !name ? null : name,
+        mac,
+        status,
+        fwVersion,
+        chipId,
+        ports,
+        distance: '-',
+        ctcStatus,
+        ctcVer,
+        activate,
+        uptime,
+        txPower: 'N/A',
+        rxPower: 'N/A'
+      });
+    }
   }
 
   return rows;
@@ -659,6 +691,10 @@ const fetchHiosoOnuDetailViaTelnet = async (olt) => {
   const user = olt.web_user || 'admin';
   const pass = olt.web_password || 'admin';
   const cmds = [
+    'show onu info epon 0/1 all',
+    'show onu info epon 0/2 all',
+    'show onu info epon 0/3 all',
+    'show onu info epon 0/4 all',
     'show onu',
     'show onu all',
     'show onu info',
@@ -666,7 +702,10 @@ const fetchHiosoOnuDetailViaTelnet = async (olt) => {
   ];
 
   try {
-    const out = await telnetLoginAndRun(olt.host, user, pass, cmds);
+    const out = await telnetLoginAndRun(olt.host, user, pass, cmds, {
+      port: olt.telnet_port || 23,
+      enablePassword: olt.enable_password || pass || 'admin'
+    });
     const rows = parseHiosoOnuTable(out);
     return rows.length > 0 ? rows : null;
   } catch (e) {
@@ -915,6 +954,15 @@ const isLikelySn = (sample) => {
 };
 
 const pickSnTable = async (session, activeProfile) => {
+  if (activeProfile.sn_table) {
+    try {
+      const m = await slowWalk(session, activeProfile.sn_table);
+      if (m && Object.keys(m).length > 0) {
+        return { oid: activeProfile.sn_table, map: m };
+      }
+    } catch (e) {}
+  }
+
   const nameOid = activeProfile.name_table || '';
   const lastDot = nameOid.lastIndexOf('.');
   const parentBranch = lastDot > 0 ? nameOid.slice(0, lastDot) : nameOid;
@@ -1436,7 +1484,7 @@ async function getOltStats(id, full = false) {
   const cacheKey = `${id}:${full}`;
   const now = Date.now();
   const cached = statsCache.get(cacheKey);
-  const cacheDuration = full ? 15000 : 10000; // 15s cache for full table, 10s for summary
+  const cacheDuration = full ? 30000 : 10000; // 30s cache for full table, 10s for summary
 
   if (cached && (now - cached.timestamp < cacheDuration)) {
     logger.info(`[oltService] Returning cached stats for OLT ${id} (full: ${full})`);
@@ -1526,7 +1574,7 @@ async function getOltStatsInternal(id, full = false) {
       resolve(data);
     };
 
-    const timeoutMs = full ? 15000 : 10000;
+    const timeoutMs = full ? 45000 : 12000;
     const globalTimeout = setTimeout(() => {
       stats.error = `Koneksi Timeout (${Math.round(timeoutMs / 1000)}s) - OLT ${olt.host} tidak merespons SNMP/Telnet`;
       safeResolve(stats);
@@ -1715,10 +1763,10 @@ async function getOltStatsInternal(id, full = false) {
           const concurrencyMap = {
             'zte': 5,
             'huawei': 4,
-            'hioso': 3,
+            'hioso': 2,
             'vsol': 4,
             'cdata': 3,
-            'hsgq': 3
+            'hsgq': 2
           };
           const concurrency = concurrencyMap[detectedBrandKey] || 4;
           await limitConcurrency(tasks, concurrency);
@@ -2423,7 +2471,93 @@ async function configureWanViaAcs(sn, data) {
    };
  }
 
+ async function testOltConnection(data) {
+   const host = String(data.host || '').trim();
+   const snmpPort = parseInt(data.snmp_port, 10) || 161;
+   const snmpCommunity = String(data.snmp_community || 'public').trim();
+   const brand = String(data.brand || 'generic').toLowerCase();
+   const telnetPort = parseInt(data.telnet_port, 10) || 23;
+   const webUser = String(data.web_user || 'admin').trim();
+   const webPassword = String(data.web_password || 'admin').trim();
+   const enablePassword = data.enable_password ? String(data.enable_password).trim() : null;
+
+   if (!host) {
+     return { success: false, message: 'Host/IP OLT harus diisi.' };
+   }
+
+   const result = {
+     success: false,
+     host,
+     snmp: { ok: false, error: null, uptime: null, sysDescr: null, profile: null, onus: 0 },
+     telnet: { ok: false, error: null },
+     messages: []
+   };
+
+   // 1. Test SNMP v2c
+   try {
+     const session = snmp.createSession(host, snmpCommunity, {
+       port: snmpPort,
+       timeout: 3000,
+       retries: 1,
+       version: snmp.Version2c
+     });
+
+     const vbs = await new Promise((resolve) => {
+       session.get(['1.3.6.1.2.1.1.3.0'], (err, res) => {
+         if (err) resolve(null);
+         else resolve(res);
+       });
+     });
+
+     if (vbs && vbs[0] && !snmp.isVarbindError(vbs[0])) {
+       result.snmp.ok = true;
+       result.snmp.uptime = decodeUptime(vbs[0].value);
+
+       // Probe profile
+       const selectedProfiles = (BRAND_PROFILES[brand] || []).map(p => ({ ...p, __brandKey: brand }));
+       const otherProfiles = Object.keys(BRAND_PROFILES)
+         .filter(k => k !== brand)
+         .reduce((acc, k) => acc.concat((BRAND_PROFILES[k] || []).map(p => ({ ...p, __brandKey: k }))), []);
+       const allProfiles = [...selectedProfiles, ...otherProfiles];
+
+       for (const p of allProfiles) {
+         const ok = await probeOid(session, p.probe_oid);
+         if (ok) {
+           result.snmp.profile = p.name;
+           try {
+             const statusMap = await slowWalk(session, p.status_table, 500);
+             result.snmp.onus = Object.keys(statusMap).length;
+           } catch (e) {}
+           break;
+         }
+       }
+       result.messages.push(`SNMP OK (Uptime: ${result.snmp.uptime}, Profil: ${result.snmp.profile || 'Standar'}, ${result.snmp.onus} ONU)`);
+     } else {
+       result.snmp.error = 'Tidak ada respon SNMP. Pastikan Service SNMP di OLT sudah Aktif dan IP/Community benar.';
+     }
+     try { session.close(); } catch (e) {}
+   } catch (e) {
+     result.snmp.error = e.message;
+   }
+
+   // 2. Test Telnet
+   try {
+     await telnetLoginAndRun(host, webUser, webPassword, ['show version'], {
+       port: telnetPort,
+       enablePassword
+     });
+     result.telnet.ok = true;
+     result.messages.push('Telnet CLI OK (Login Berhasil)');
+   } catch (e) {
+     result.telnet.error = e.message;
+   }
+
+   result.success = result.snmp.ok || result.telnet.ok;
+   result.message = result.messages.join(' | ') || (result.snmp.error || result.telnet.error || 'Gagal terhubung ke OLT');
+   return result;
+ }
+
  module.exports = {
-  getAllOlts, getActiveOlts, getOltById, createOlt, updateOlt, deleteOlt, getOltStats, getAllOltsStats, rebootOnu, renameOnu, authorizeOnu,
+  getAllOlts, getActiveOlts, getOltById, createOlt, updateOlt, deleteOlt, getOltStats, getAllOltsStats, testOltConnection, rebootOnu, renameOnu, authorizeOnu,
   configureOnuWan, configureZteWanViaGoApi, configureWanViaAcs
 };
